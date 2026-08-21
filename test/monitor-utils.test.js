@@ -20,5 +20,5 @@ test('监控工具正确解析 CDNFly 时间戳与 Nginx 日志时间', () => {
   const nginx = formatMonitorTime('21/Aug/2026:03:40:57 +0800');
   assert.match(nginx, /2026/);
   assert.match(nginx, /03:40:57/);
-  assert.doesNotMatch(formatMonitorChartLabel(1787249700000), /1787249700000/);
+  assert.match(formatMonitorChartLabel(1787249700000), /08\/21 02:15/);
 });

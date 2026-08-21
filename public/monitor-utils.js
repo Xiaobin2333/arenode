@@ -1,4 +1,5 @@
 const MONITOR_COLLECTION_KEYS = ['items', 'rows', 'list', 'data', 'result', 'values', 'points', 'series'];
+const MONITOR_TIME_ZONE = 'Asia/Shanghai';
 
 function isPointPair(value) {
   return Array.isArray(value)
@@ -84,7 +85,7 @@ export function formatMonitorTime(value) {
   const date = parseMonitorDate(value);
   if (!date) return String(value);
   return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: MONITOR_TIME_ZONE,
   }).format(date);
 }
 
@@ -92,7 +93,7 @@ export function formatMonitorChartLabel(value) {
   const date = parseMonitorDate(value);
   if (!date) return String(value ?? '-');
   return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: MONITOR_TIME_ZONE,
   }).format(date);
 }
 
