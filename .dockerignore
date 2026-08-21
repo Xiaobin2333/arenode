@@ -1,0 +1,16 @@
+.git
+.gitignore
+.artifacts
+.env
+.env.*
+!.env.example
+node_modules
+coverage
+data
+test
+scripts
+*.log
+*.dump
+.DS_Store
+.idea
+.vscode

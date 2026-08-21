@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Arenode 控制台</title>
+  <link rel="stylesheet" href="/styles.css?v=arenode">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <main id="loginView" class="login-shell">
+    <section class="login-brand" aria-label="Arenode">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <p class="eyebrow">EDGE RESOURCE PLATFORM</p>
+        <h1 data-site-name>Arenode</h1>
+        <p class="login-copy" data-site-subtitle>边缘资源管理平台</p>
+      </div>
+      <p class="trust-line"><span></span> 全链路加密连接</p>
+    </section>
+    <section class="login-panel">
+      <div id="publicAnnouncement" class="public-announcement hidden"><strong></strong><p></p></div>
+      <form id="loginForm" class="login-form">
+        <div class="mobile-brand"><div class="brand-mark small"><span></span><span></span><span></span></div><span data-site-name>Arenode</span></div>
+        <p class="eyebrow">欢迎回来</p>
+        <h2>登录控制台</h2>
+        <p class="muted">使用用户名或已验证邮箱登录</p>
+        <label>账号<input name="username" autocomplete="username" required placeholder="用户名或邮箱"></label>
+        <label>密码<div class="password-row"><input name="password" type="password" autocomplete="current-password" required placeholder="请输入密码"><button type="button" class="icon-button password-toggle" aria-label="显示密码" title="显示或隐藏密码">◉</button></div></label>
+        <div class="turnstile-slot" data-turnstile="login"></div>
+        <button class="primary wide" type="submit"><span>登录</span><span aria-hidden="true">→</span></button>
+        <p class="login-help"><button id="showForgot" class="inline-action" type="button">忘记密码</button><span> · </span>没有账号？<button id="showRegister" class="inline-action" type="button">自助注册</button></p>
+      </form>
+      <form id="mfaLoginForm" class="login-form hidden">
+        <div class="mobile-brand"><div class="brand-mark small"><span></span><span></span><span></span></div><span data-site-name>Arenode</span></div>
+        <p class="eyebrow">安全验证</p><h2>输入动态验证码</h2><p class="muted">请输入验证器中的 6 位动态验证码，也可以使用一枚恢复码。</p>
+        <input name="challengeToken" type="hidden"><label>动态验证码或恢复码<input name="code" autocomplete="one-time-code" required placeholder="000000"></label>
+        <button class="primary wide" type="submit">完成登录</button><p class="login-help"><button id="mfaBackLogin" class="inline-action" type="button">返回登录</button></p>
+      </form>
+      <form id="registerForm" class="login-form hidden">
+        <div class="mobile-brand"><div class="brand-mark small"><span></span><span></span><span></span></div><span data-site-name>Arenode</span></div>
+        <p class="eyebrow">创建账号</p><h2>创建账号</h2><p id="registerHint" class="muted">请使用平台支持的邮箱完成验证，注册后可使用余额购买套餐</p>
+        <fieldset id="registerCredentials">
+          <label>用户名<input name="username" autocomplete="username" required placeholder="3-32 位字母或数字"></label>
+          <label>邮箱<div class="email-code-row"><input name="email" type="email" autocomplete="email" required placeholder="name@example.com"><button id="registerSendCode" class="secondary" type="button">发送验证码</button></div></label>
+          <label>密码<div class="password-row"><input name="password" type="password" minlength="10" autocomplete="new-password" required placeholder="至少 10 个字符"><button type="button" class="icon-button password-toggle" aria-label="显示密码" title="显示或隐藏密码">◉</button></div></label>
+          <label>确认密码<div class="password-row"><input name="confirmPassword" type="password" minlength="10" autocomplete="new-password" required placeholder="再次输入密码"><button type="button" class="icon-button password-toggle" aria-label="显示密码" title="显示或隐藏密码">◉</button></div></label>
+          <label id="inviteCodeField" class="hidden">邀请码<input name="inviteCode" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX"></label>
+          <label id="legalConsentField" class="consent-row"><input name="legalConsent" type="checkbox"><span>我已阅读并同意 <button type="button" class="inline-action" data-legal="terms">服务条款</button> 和 <button type="button" class="inline-action" data-legal="privacy">隐私政策</button></span></label>
+          <div class="turnstile-slot" data-turnstile="register"></div>
+        </fieldset>
+        <label id="registerCodeField" class="hidden">邮箱验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 位验证码"></label>
+        <button id="registerSubmit" class="primary wide" type="submit"><span>注册</span><span aria-hidden="true">→</span></button>
+        <button id="registerRestart" class="secondary wide hidden" type="button">修改注册信息</button>
+        <p class="login-help">已有账号？<button id="showLogin" class="inline-action" type="button">返回登录</button></p>
+      </form>
+      <form id="forgotForm" class="login-form hidden">
+        <div class="mobile-brand"><div class="brand-mark small"><span></span><span></span><span></span></div><span data-site-name>Arenode</span></div>
+        <p class="eyebrow">找回密码</p><h2>找回密码</h2><p id="forgotHint" class="muted">通过已验证邮箱接收验证码</p>
+        <fieldset id="forgotRequestFields">
+          <label>邮箱<div class="email-code-row"><input name="email" type="email" autocomplete="email" required placeholder="name@example.com"><button id="forgotSendCode" class="secondary" type="button">发送验证码</button></div></label>
+          <div class="turnstile-slot" data-turnstile="forgot"></div>
+        </fieldset>
+        <fieldset id="forgotResetFields" class="hidden">
+          <label>邮箱验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 位验证码"></label>
+          <label>新密码<div class="password-row"><input name="newPassword" type="password" minlength="10" autocomplete="new-password" placeholder="至少 10 个字符"><button type="button" class="icon-button password-toggle" aria-label="显示密码" title="显示或隐藏密码">◉</button></div></label>
+          <label>确认新密码<div class="password-row"><input name="confirmPassword" type="password" minlength="10" autocomplete="new-password" placeholder="再次输入密码"><button type="button" class="icon-button password-toggle" aria-label="显示密码" title="显示或隐藏密码">◉</button></div></label>
+        </fieldset>
+        <button id="forgotSubmit" class="primary wide" type="submit" disabled><span>重置密码</span><span aria-hidden="true">→</span></button>
+        <button id="forgotRestart" class="secondary wide hidden" type="button">更换邮箱</button>
+        <p class="login-help"><button id="forgotBackLogin" class="inline-action" type="button">返回登录</button></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="app-brand"><div class="arenode-logo" aria-hidden="true">A</div><div><strong data-site-name>Arenode</strong><small>边缘资源控制台</small></div></div>
+      <nav id="nav">
+        <div class="customer-only tenant-nav">
+          <label class="nav-search tenant-nav-search"><span>⌕</span><input id="tenantNavSearch" type="search" placeholder="搜索功能" aria-label="搜索客户功能"></label>
+          <button data-view="overview" data-title="控制台" class="nav-direct active"><span class="nav-icon">◆</span><span>控制台</span></button>
+          <button data-view="tenant-dashboard" data-title="数据大屏" class="nav-direct"><span class="nav-icon">▥</span><span>数据大屏</span></button>
+
+          <section class="nav-cluster">
+            <button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">◎</span><span>站点管理</span><i></i></button>
+            <div class="nav-children">
+              <button data-view="sites" data-title="网站列表"><span></span>网站列表</button>
+              <button data-view="security" data-kind="certs" data-title="证书管理"><span></span>证书管理</button>
+              <button data-view="data" data-data-tab="jobs" data-title="刷新预热"><span></span>刷新预热</button>
+              <button data-view="security" data-kind="dnsapis" data-title="DNS API"><span></span>DNS API</button>
+            </div>
+          </section>
+
+          <section class="nav-cluster">
+            <button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">⌁</span><span>四层转发</span><i></i></button>
+            <div class="nav-children">
+              <button data-view="data" data-data-tab="streams" data-stream-kind="streams" data-title="转发列表"><span></span>转发列表</button>
+              <button data-view="data" data-data-tab="streams" data-stream-kind="stream-groups" data-title="分组管理"><span></span>分组管理</button>
+              <button data-view="data" data-data-tab="configs" data-config-type="stream" data-title="默认设置"><span></span>默认设置</button>
+            </div>
+          </section>
+
+          <section class="nav-cluster">
+            <button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">▥</span><span>数据详情</span><i></i></button>
+            <div class="nav-children">
+              <button data-view="data" data-data-tab="monitor" data-monitor-context="site" data-monitor-endpoint="realtime" data-title="网站监控"><span></span>网站监控</button>
+              <button data-view="data" data-data-tab="monitor" data-monitor-context="logs" data-monitor-endpoint="attack-log" data-title="拦截日志"><span></span>拦截日志</button>
+              <button data-view="data" data-data-tab="monitor" data-monitor-context="logs" data-monitor-endpoint="access-log" data-title="访问日志"><span></span>访问日志</button>
+              <button data-view="data" data-data-tab="monitor" data-monitor-context="logs" data-monitor-endpoint="stream-realtime" data-title="转发监控"><span></span>转发监控</button>
+            </div>
+          </section>
+
+          <section class="nav-cluster">
+            <button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">●</span><span>安全策略</span><i></i></button>
+            <div class="nav-children">
+              <button data-view="security" data-kind="acls" data-title="ACL 管理"><span></span>ACL 管理</button>
+              <button data-view="security" data-kind="waf-rules" data-title="WAF 规则"><span></span>WAF 规则</button>
+              <button data-view="security" data-kind="cc-rules" data-title="CC 防护"><span></span>CC 防护</button>
+            </div>
+          </section>
+
+          <section class="nav-cluster">
+            <button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">▰</span><span>套餐中心</span><i></i></button>
+            <div class="nav-children">
+              <button data-view="billing" data-billing-target="current" data-title="我的套餐"><span></span>我的套餐</button>
+              <button data-view="billing" data-billing-target="addons" data-title="流量包"><span></span>流量包</button>
+              <button data-view="billing" data-billing-target="usage" data-title="用量查询"><span></span>用量查询</button>
+            </div>
+          </section>
+
+          <section class="nav-cluster">
+            <button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">♟</span><span>账户中心</span><i></i></button>
+            <div class="nav-children">
+              <button data-view="account" data-title="个人资料"><span></span>个人资料</button>
+              <button data-view="account" data-account-section="api-keys" data-title="API 密钥"><span></span>API 密钥</button>
+              <button data-view="billing" data-billing-target="wallet" data-title="余额中心"><span></span>余额中心</button>
+              <button data-view="data" data-data-tab="monitor" data-monitor-context="audit" data-monitor-endpoint="operation-log" data-title="日志查询"><span></span>日志查询</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="admin-only admin-nav">
+          <label class="nav-search"><span>⌕</span><input id="adminNavSearch" type="search" placeholder="搜索后台功能" aria-label="搜索后台功能"></label>
+          <button data-view="admin-overview" data-title="管理控制台" class="nav-direct active"><span class="nav-icon">◆</span><span>管理控制台</span></button>
+          <section class="nav-cluster"><button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">♙</span><span>运营管理</span><i></i></button><div class="nav-children"><button data-view="users" data-title="客户管理"><span></span>客户管理</button><button data-view="invitations" data-title="邀请码"><span></span>邀请码</button><button data-view="admin-sites" data-title="站点管理"><span></span>站点管理</button><button data-view="admin-streams" data-title="四层转发"><span></span>四层转发</button><button data-view="billing-admin" data-admin-billing-tab="usage" data-title="客户用量"><span></span>客户用量</button></div></section>
+          <section class="nav-cluster"><button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">▰</span><span>套餐管理</span><i></i></button><div class="nav-children"><button data-view="billing-admin" data-admin-billing-tab="plans" data-title="套餐目录"><span></span>套餐目录</button><button data-view="billing-admin" data-admin-billing-tab="groups" data-title="套餐分组"><span></span>套餐分组</button><button data-view="billing-admin" data-admin-billing-tab="upgrades" data-title="增值项"><span></span>增值项</button><button data-view="billing-admin" data-admin-billing-tab="traffic" data-title="流量包"><span></span>流量包</button><button data-view="billing-admin" data-admin-billing-tab="codes" data-title="权益兑换码"><span></span>权益兑换码</button><button data-view="billing-admin" data-admin-billing-tab="subscriptions" data-title="客户套餐"><span></span>客户套餐</button></div></section>
+          <section class="nav-cluster"><button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">¥</span><span>财务管理</span><i></i></button><div class="nav-children"><button data-view="billing-admin" data-admin-billing-tab="wallets" data-title="客户余额"><span></span>客户余额</button><button data-view="billing-admin" data-admin-billing-tab="recharge" data-title="余额充值码"><span></span>余额充值码</button><button data-view="billing-admin" data-admin-billing-tab="orders" data-title="订单记录"><span></span>订单记录</button><button data-view="billing-admin" data-admin-billing-tab="reports" data-title="财务报表"><span></span>财务报表</button></div></section>
+          <section class="nav-cluster"><button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">≡</span><span>安全与审计</span><i></i></button><div class="nav-children"><button data-view="administrators" data-title="管理员"><span></span>管理员</button><button data-view="audit" data-title="审计日志"><span></span>审计日志</button></div></section>
+          <section class="nav-cluster"><button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">⚙</span><span>系统设置</span><i></i></button><div class="nav-children"><button data-view="upstreams" data-title="上游管理"><span></span>上游管理</button><button data-view="runtime-settings" data-title="运行参数"><span></span>运行参数</button><button data-view="system-health" data-title="系统状态"><span></span>系统状态</button><button data-view="account" data-title="账户设置"><span></span>账户设置</button></div></section>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="connection"><i></i><span>控制台在线</span></div>
+        <button id="logoutButton" class="logout"><span>退出登录</span><span aria-hidden="true">↗</span></button>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <button id="menuButton" class="icon-button menu-button" aria-label="打开菜单">☰</button>
+        <div class="topbar-title"><p id="breadcrumb" class="eyebrow">站点运营 / 控制台</p><h2 id="pageTitle">运行概览</h2></div>
+        <div class="topbar-meta"><div class="top-status"><small>服务状态</small><strong id="apiStatus" class="pending"><i></i>检测中</strong></div><div class="top-clock"><small>系统时间</small><strong id="systemClock">--:--:--</strong></div><div class="account"><span id="accountInitial">U</span><div><strong id="accountName">user</strong><small id="accountRole">用户</small></div></div></div>
+      </header>
+
+      <main class="content">
+        <div id="appAnnouncement" class="app-announcement hidden"><div><strong></strong><p></p></div><button id="closeAppAnnouncement" class="icon-button" type="button" aria-label="关闭公告">×</button></div>
+        <section id="overview" class="view active">
+          <section class="overview-welcome">
+            <div class="welcome-main"><p class="section-kicker">CDN 运营概览</p><h3><span id="greetingText">你好</span>，<strong id="welcomeName">用户</strong></h3><p>集中查看站点接入、运行状态、套餐资源和近期操作。</p><div class="welcome-actions"><button class="primary" data-action="new-site">＋ 添加网站</button><button class="secondary" data-view-link="billing">查看套餐</button></div><div class="welcome-status"><span><small>CDN 服务</small><strong id="welcomeServiceStatus">检测中</strong></span><span><small>站点接入</small><strong id="welcomeSites">0 个</strong></span><span><small>有效套餐</small><strong id="welcomePlan">未分配</strong></span><span><small>套餐状态</small><strong id="welcomePlanState">待开通</strong></span></div></div>
+            <aside class="welcome-account"><div><span>账户类型</span><strong>客户</strong></div><div><span>当前套餐</span><strong id="accountPlan">未分配</strong></div><div><span>套餐到期</span><strong id="accountPlanEnd">-</strong></div><div><span>资源状态</span><strong id="accountResourceState">检测中</strong></div></aside>
+          </section>
+          <div class="metrics overview-metrics">
+            <article class="metric metric-blue"><span class="metric-icon blue">◎</span><div><small>加速网站</small><strong id="metricSites">0</strong><p>已接入网站总数</p></div></article>
+            <article class="metric metric-green"><span class="metric-icon green">✓</span><div><small>正常运行</small><strong id="metricActive">0</strong><p>已启用加速服务</p></div></article>
+            <article class="metric metric-amber"><span class="metric-icon amber">◫</span><div><small>站点额度</small><strong id="metricQuota">0 / 0</strong><p>当前套餐资源</p></div></article>
+            <article class="metric metric-rose"><span class="metric-icon rose">⌁</span><div><small>端口用量</small><strong id="metricPorts">0 / 0</strong><p>HTTP 与转发端口</p></div></article>
+          </div>
+          <div class="dashboard-grid">
+            <section class="panel trend-panel"><div class="panel-head"><div><h3>核心趋势</h3><p>最近 24 小时流量变化</p></div><span class="badge active">24 小时</span></div><div class="chart-wrap"><canvas id="trafficChart" width="900" height="310"></canvas><div id="chartEmpty" class="chart-empty">暂无流量监控数据</div></div><footer class="chart-meta"><span>最近更新时间</span><span id="trafficChartUpdated">尚未同步</span></footer></section>
+            <aside class="panel attention-panel"><div class="panel-head"><div><h3>服务概况</h3><p>网站与套餐的重点状态</p></div></div><div class="attention-list"><div><span>最近网站</span><strong id="attentionLatest">暂无</strong></div><div><span>套餐使用</span><strong id="attentionUsage">0%</strong></div><div><span>运行异常</span><strong id="attentionIssues">0 个</strong></div><div><span>待处理订单</span><strong id="attentionOrders">0 笔</strong></div></div><div class="quick-links"><button data-view-link="sites">网站列表</button><button data-view-link="data">实时监控</button><button data-view-link="billing" data-billing-target="wallet">余额中心</button><button data-view-link="account">账户资料</button></div></aside>
+          </div>
+          <div class="dashboard-bottom">
+            <section class="panel recent-panel"><div class="panel-head"><div><h3>最近网站</h3><p>快速查看站点配置与状态</p></div><button class="text-button" data-view-link="sites">查看全部 →</button></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>源站</th><th>状态</th><th>创建时间</th></tr></thead><tbody id="recentSites"></tbody></table></div><div id="overviewEmpty" class="empty hidden"><span>◎</span><h4>还没有网站</h4><p>添加第一个域名开始使用 CDN 服务</p><button class="primary" data-action="new-site">＋ 添加网站</button></div></section>
+            <section class="panel package-summary"><div class="panel-head"><div><h3>套餐使用情况</h3><p>当前计费周期资源消耗</p></div></div><div id="overviewQuotaSummary" class="quota-summary"></div></section>
+          </div>
+        </section>
+
+        <section id="tenant-dashboard" class="view customer-only">
+          <div class="section-head"><div><h3>数据大屏</h3><p>查看网站运行、流量用量与套餐状态</p></div><button id="refreshTenantDashboard" class="secondary">↻ 刷新数据</button></div>
+          <div class="module-banner data-banner"><span class="banner-icon">▥</span><div><small>REAL-TIME OVERVIEW</small><h3>业务运行数据</h3><p>汇总展示本账户网站的监控数据。</p></div><span class="isolation-pill">实时数据</span></div>
+          <div class="ops-summary dashboard-summary"><div><span class="summary-icon blue">◎</span><p>站点总数<strong id="screenSites">0</strong></p></div><div><span class="summary-icon green">✓</span><p>运行站点<strong id="screenActive">0</strong></p></div><div><span class="summary-icon amber">⇣</span><p>本月流量<strong id="screenTraffic">0 B</strong></p></div><div><span class="summary-icon rose">⌁</span><p>端口用量<strong id="screenPorts">0 / 0</strong></p></div></div>
+          <div class="screen-grid">
+            <section class="panel screen-chart"><div class="panel-head"><div><h3>流量趋势</h3><p>最近 24 小时网站流量</p></div><span class="badge active">本账户</span></div><div class="chart-wrap"><canvas id="dataOverviewChart" width="900" height="340"></canvas><div id="dataOverviewEmpty" class="chart-empty">暂无流量监控数据</div></div><footer class="chart-meta"><span>最近更新时间</span><span id="dataOverviewUpdated">尚未同步</span></footer></section>
+            <aside class="panel screen-status"><div class="panel-head"><div><h3>资源状态</h3><p>当前计费周期</p></div></div><div id="screenQuotaSummary" class="quota-summary"></div><div class="status-footer"><span>套餐</span><strong id="screenPlan">未分配</strong><span>到期时间</span><strong id="screenPlanEnd">-</strong></div></aside>
+          </div>
+          <section class="panel"><div class="panel-head"><div><h3>网站运行明细</h3><p>最近接入的网站</p></div><button class="text-button" data-view-link="sites">网站管理 →</button></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>源站</th><th>运行状态</th><th>创建时间</th></tr></thead><tbody id="screenSiteTable"></tbody></table></div><div id="screenSitesEmpty" class="empty hidden"><span>◎</span><h4>暂无网站数据</h4></div></section>
+        </section>
+
+        <section id="sites" class="view">
+          <div class="section-head"><div><small class="section-context">网站管理</small><h3>网站列表</h3><p>接入和管理加速网站、分组与解析配置。</p></div></div>
+          <section class="module-banner page-hero"><div class="hero-copy"><small>SITE MANAGEMENT</small><span class="banner-icon">▣</span><div><h3>网站管理</h3><p>管理加速域名、网站分组、默认设置和解析状态。</p></div></div><span class="isolation-pill">账户资源</span></section>
+          <div class="ops-summary page-metrics">
+            <div><span class="summary-icon blue">◎</span><p>网站总数<strong id="siteSummaryTotal">0</strong><small>已接入网站</small></p></div>
+            <div><span class="summary-icon green">✓</span><p>正常运行<strong id="siteSummaryActive">0</strong><small>状态正常且已启用</small></p></div>
+            <div><span class="summary-icon amber">◇</span><p>已启用 HTTPS<strong id="siteSummaryHttps">0</strong><small>已配置 HTTPS 的站点</small></p></div>
+            <div><span class="summary-icon rose">!</span><p>需要关注<strong id="siteSummaryPaused">0</strong><small>停用、异常或待处理</small></p></div>
+          </div>
+          <div class="workbench-layout">
+            <aside class="workbench-rail"><button class="active" data-site-workbench="list"><span class="summary-icon blue">▣</span><div><strong>网站列表</strong><small>查看、编辑和管理已接入站点</small></div></button><button data-site-workbench="groups"><span class="summary-icon green">□</span><div><strong>分组管理</strong><small>维护站点分组和批量归类策略</small></div></button><button data-site-workbench="defaults"><span class="summary-icon amber">⚙</span><div><strong>默认设置</strong><small>统一定义新站点初始化参数</small></div></button><button data-site-workbench="dns"><span class="summary-icon rose">⌁</span><div><strong>DNS API</strong><small>管理自动签发和解析联动接口</small></div></button><button id="siteAnalysisEntry" type="button"><span class="summary-icon blue">⌕</span><div><strong>解析检查</strong><small>核验 CNAME 和接入解析是否正确</small></div></button></aside>
+            <section id="siteListPane" class="panel workbench-main site-workbench-pane">
+              <div class="toolbar site-action-toolbar"><div class="toolbar-actions"><button class="primary customer-only" data-action="new-site">＋ 添加网站</button><span class="action-menu"><button id="siteBulkEdit" class="secondary" type="button" popovertarget="siteBulkEditMenu" aria-haspopup="menu" aria-expanded="false" disabled>批量修改</button><div id="siteBulkEditMenu" class="action-popover site-toolbar-popover" popover="auto" role="menu"><button id="siteBulkEnable" type="button" disabled>启用网站</button><button id="siteBulkDisable" type="button" disabled>停用网站</button></div></span><button id="siteApplyCert" class="secondary" type="button" disabled>申请证书</button><span class="action-menu"><button id="siteMoreActions" class="secondary" type="button" popovertarget="siteMoreMenu" aria-haspopup="menu" aria-expanded="false">更多操作</button><div id="siteMoreMenu" class="action-popover site-toolbar-popover" popover="auto" role="menu"><button id="refreshSites" type="button">刷新列表</button><button id="siteBulkDelete" class="danger" type="button" disabled>删除所选网站</button></div></span></div></div>
+              <div class="toolbar site-filter-toolbar"><select id="siteSearchType" aria-label="搜索字段"><option value="all">全部字段</option><option value="domain">域名</option><option value="origin">源站</option><option value="cname">CNAME</option></select><label class="search"><span>⌕</span><input id="siteSearch" placeholder="输入域名、源站或 CNAME"></label><span id="siteSelectionCount" class="selection-count hidden">已选择 0 项</span><span id="siteCount" class="count-label">0 个网站</span></div>
+              <div class="table-wrap"><table class="data-table site-table"><thead><tr><th class="select-cell"><input id="selectAllSites" type="checkbox" aria-label="全选网站"></th><th>ID</th><th>域名</th><th>监听端口</th><th>源站</th><th>HTTPS</th><th>套餐</th><th>CNAME</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="siteTable"></tbody></table></div>
+              <div id="sitesEmpty" class="empty hidden"><span>◎</span><h4>还没有网站</h4><p>新建网站后将在这里显示</p></div>
+            </section>
+            <section id="siteAnalysisPane" class="panel workbench-main site-workbench-pane hidden">
+              <div class="toolbar site-action-toolbar"><div><strong>解析检查</strong><small class="toolbar-description">检查全部加速域名的 CNAME 解析状态</small></div><button id="checkAllSiteCnames" type="button" class="primary">↻ 全部检测</button></div>
+              <div class="toolbar site-filter-toolbar"><label class="search"><span>⌕</span><input id="siteAnalysisSearch" type="search" placeholder="搜索域名或 CNAME"></label><span id="siteAnalysisCount" class="count-label">0 个域名</span></div>
+              <div class="table-wrap cname-check-table"><table class="data-table"><thead><tr><th>域名</th><th>目标 CNAME</th><th>当前解析</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="siteAnalysisTable"></tbody></table></div>
+              <div id="siteAnalysisEmpty" class="empty hidden"><span>⌁</span><h4>暂无可检查域名</h4><p>网站接入后可在这里核验解析</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="site-detail" class="view customer-only">
+          <header class="site-detail-bar">
+            <button id="backToSites" class="secondary" type="button">← 返回</button>
+            <div class="site-detail-identity"><p><span id="detailSiteId">ID: -</span><b id="detailSiteState" class="badge active">正常</b></p><h3 id="detailSiteDomain">-</h3><small>CNAME：<strong id="detailSiteCname">-</strong><span>套餐：<strong id="detailSitePlan">-</strong></span><span>创建时间：<strong id="detailSiteCreated">-</strong></span></small></div>
+            <div class="site-detail-status"><span>HTTPS <strong id="detailSiteHttps">未启用</strong></span><span>源站 <strong id="detailSiteOriginSummary">-</strong></span></div>
+            <button id="syncSiteDetail" class="secondary" type="button">↻ 同步</button>
+          </header>
+          <nav class="site-config-tabs" aria-label="网站配置分类">
+            <button class="active" type="button" data-site-section="siteBasic">基础设置</button>
+            <button type="button" data-site-section="siteHttp">HTTP 设置</button>
+            <button type="button" data-site-section="siteOrigin">回源设置</button>
+            <button type="button" data-site-section="siteHttps">HTTPS 设置</button>
+            <button type="button" data-site-section="siteCache">缓存设置</button>
+            <button type="button" data-site-section="siteSecurity">安全配置</button>
+            <button type="button" data-site-section="siteAccess">访问控制</button>
+            <button type="button" data-site-section="siteAdvanced">高级配置</button>
+          </nav>
+          <form id="siteDetailForm" class="site-config-form">
+            <section id="siteBasic" class="detail-section active">
+              <div class="site-config-heading"><div><h3>基础设置</h3><p>查看站点域名、套餐和解析目标。</p></div></div>
+              <div class="detail-form-grid"><label>加速域名<input name="domain" disabled></label><label>所属套餐<select name="subscriptionId" required></select></label><label>网站分组<select name="groupId"><option value="">不分组</option></select><small>用于网站分类和筛选。</small></label><label class="full">CNAME<div class="inline-control"><input name="cname" disabled><button type="button" class="secondary" id="checkSiteCname">检查解析</button></div><small>请在 DNS 服务商处将加速域名解析到该 CNAME。</small></label></div>
+              <div class="switch-list compact-switches"><label><span><strong>启用网站</strong><small>关闭后该网站将停止提供 CDN 服务。</small></span><input type="checkbox" name="enabled"></label></div>
+            </section>
+            <section id="siteHttp" class="detail-section">
+              <div class="site-config-heading"><div><h3>HTTP 设置</h3><p>设置 HTTP 访问开关和监听端口。</p></div></div>
+              <div class="detail-form-grid"><label>HTTP 监听端口<input name="httpPorts" value="80" placeholder="80 8080"><small>多个端口使用空格分隔。</small></label></div>
+              <div class="switch-list compact-switches"><label><span><strong>启用 HTTP</strong></span><input type="checkbox" name="httpEnabled"></label></div>
+            </section>
+            <section id="siteOrigin" class="detail-section">
+              <div class="site-config-heading"><div><h3>回源设置</h3><p>设置回源协议、端口、负载方式和源站健康检查。</p></div><button id="addSiteBackend" class="secondary" type="button">＋ 添加源站</button></div>
+              <div class="config-subsection"><h4>回源协议与端口</h4><div class="detail-form-grid"><label>回源协议<select name="backendProtocol"><option value="follow">跟随访问协议</option><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label>负载方式<select name="balanceWay"><option value="rr">轮询</option><option value="ip_hash">IP Hash</option><option value="url_hash">URL Hash</option><option value="least_conn">最少连接</option><option value="random">随机</option></select></label><label>HTTP 回源端口<input name="backendHttpPort" inputmode="numeric" value="80"></label><label>HTTPS 回源端口<input name="backendHttpsPort" inputmode="numeric" value="443"></label><label>回源 Host<input name="backendHost" placeholder="$host"></label><label>回源超时（秒）<input name="proxyTimeout" type="number" min="1"></label><label>回源 HTTP 版本<select name="proxyHttpVersion"><option value="1.1">HTTP/1.1</option><option value="1.0">HTTP/1.0</option></select></label><fieldset class="tls-protocol-field"><legend>回源 SSL 协议</legend><div class="tls-protocol-options"><label><input type="checkbox" name="proxySslProtocol" value="TLSv1"><span>TLSv1</span></label><label><input type="checkbox" name="proxySslProtocol" value="TLSv1.1"><span>TLSv1.1</span></label><label><input type="checkbox" name="proxySslProtocol" value="TLSv1.2" checked><span>TLSv1.2</span></label><label><input type="checkbox" name="proxySslProtocol" value="TLSv1.3" checked><span>TLSv1.3</span></label></div></fieldset></div></div>
+              <div class="config-subsection"><div class="subsection-title"><h4>源站地址</h4></div><div id="siteBackendList" class="rule-builder detail-rule-builder"></div></div>
+              <div class="config-subsection"><h4>回源连接与分片</h4><div class="detail-form-grid"><label>连接池最大空闲数<input name="keepaliveConnections" type="number" min="0"></label><label>空闲连接超时（秒）<input name="keepaliveTimeout" type="number" min="0"></label></div><div class="switch-list compact-switches"><label><span><strong>回源端口映射</strong><small>回源协议和端口跟随访问协议与端口。</small></span><input type="checkbox" name="backendPortMapping"></label><label><span><strong>Range 回源</strong><small>按客户端请求的文件分片范围回源。</small></span><input type="checkbox" name="range"></label><label><span><strong>启用回源连接池</strong></span><input type="checkbox" name="keepalive"></label></div></div>
+              <div class="config-subsection"><h4>源站健康检查</h4><div class="detail-form-grid"><label>检查协议<select name="healthProtocol"><option value="http">HTTP</option></select></label><label>检查域名<input name="healthHost"></label><label>检查路径<input name="healthPath" placeholder="/"></label><label>有效状态码<input name="healthStatusCode" value="200 301 302"></label><label>检查间隔（秒）<input name="healthInterval" type="number" min="0" value="5"></label></div><div class="switch-list compact-switches"><label><span><strong>启用源站健康检查</strong></span><input type="checkbox" name="healthEnabled"></label></div></div>
+            </section>
+            <section id="siteHttps" class="detail-section">
+              <div class="site-config-heading"><div><h3>HTTPS 设置</h3><p>设置证书、监听端口、TLS 和强制 HTTPS。</p></div></div>
+              <div class="detail-form-grid"><label>HTTPS 监听端口<input name="httpsPorts" value="443" placeholder="443 8443"><small>多个端口使用空格分隔。</small></label><label>HTTPS 证书<select name="httpsCert"><option value="">不使用证书</option></select></label><label>强制 HTTPS 端口<input name="forceSslPort" value="443"></label><fieldset class="tls-protocol-field full"><legend>TLS 协议</legend><div class="tls-protocol-options"><label><input type="checkbox" name="sslProtocol" value="TLSv1"><span>TLSv1</span></label><label><input type="checkbox" name="sslProtocol" value="TLSv1.1"><span>TLSv1.1</span></label><label><input type="checkbox" name="sslProtocol" value="TLSv1.2" checked><span>TLSv1.2</span></label><label><input type="checkbox" name="sslProtocol" value="TLSv1.3" checked><span>TLSv1.3</span></label></div></fieldset><label class="full">SSL 加密套件<textarea name="sslCiphers" rows="3"></textarea><small>默认采用兼顾安全性与兼容性的推荐套件，可按需修改。</small></label></div>
+              <div class="switch-list compact-switches"><label><span><strong>启用 HTTPS</strong></span><input type="checkbox" name="httpsEnabled"></label><label><span><strong>强制跳转 HTTPS</strong></span><input type="checkbox" name="forceSsl"></label><label><span><strong>HTTP/2</strong></span><input type="checkbox" name="http2"></label><label><span><strong>HTTP/3</strong></span><input type="checkbox" name="http3"></label><label><span><strong>HSTS</strong></span><input type="checkbox" name="hsts"></label><label><span><strong>OCSP Stapling</strong></span><input type="checkbox" name="ocspStapling"></label><label><span><strong>优先使用服务端加密套件</strong></span><input type="checkbox" name="sslPreferServerCiphers"></label></div>
+            </section>
+            <section id="siteCache" class="detail-section">
+              <div class="site-config-heading"><div><h3>缓存设置</h3><p>按后缀、目录或完整路径配置缓存与排除条件。</p></div><button id="addSiteCacheRule" class="secondary" type="button">＋ 添加缓存规则</button></div>
+              <div id="siteCacheRuleList" class="rule-builder detail-rule-builder"></div>
+            </section>
+            <section id="siteSecurity" class="detail-section">
+              <div class="site-config-heading"><div><h3>安全配置</h3><p>绑定 CC 防护规则并设置代理、区域和 IP 访问限制。</p></div></div>
+              <div class="config-subsection"><h4>CC 防护</h4><div class="detail-form-grid"><label>默认 CC 规则<select name="ccDefaultRule"><option value="">不绑定</option></select></label><label>自动提升规则<select name="ccSwitchRule"><option value="">不绑定</option></select></label><label>触发 QPS<input name="ccSwitchThreshold" type="number" min="0"></label></div><div class="switch-list compact-switches"><label><span><strong>自动提升防护等级</strong></span><input type="checkbox" name="ccSwitchEnabled"></label><label><span><strong>屏蔽透明代理</strong></span><input type="checkbox" name="blockProxy"></label></div></div>
+              <div class="config-subsection"><h4>区域与 IP 限制</h4><div class="detail-form-grid"><label class="full">屏蔽区域<textarea name="blockRegion" rows="3" placeholder="两位国家或地区代码，多个使用逗号分隔"></textarea></label><label>IP 黑名单<textarea name="blackIp" rows="6" placeholder="每行一个 IP 或 /8、/16、/24 网段"></textarea></label><label>IP 白名单<textarea name="whiteIp" rows="6" placeholder="每行一个 IP 或 /8、/16、/24 网段"></textarea></label></div></div>
+            </section>
+            <section id="siteAccess" class="detail-section">
+              <div class="site-config-heading"><div><h3>访问控制</h3><p>绑定 ACL，并设置防盗链和跨域响应。</p></div></div>
+              <div class="config-subsection"><h4>ACL 规则</h4><div class="detail-form-grid"><label>绑定 ACL<select name="acl"><option value="">不绑定</option></select></label></div></div>
+              <div class="config-subsection"><h4>防盗链</h4><div class="detail-form-grid"><label>允许域名<textarea name="hotlinkDomains" rows="4" placeholder="example.com"></textarea></label><label>匹配内容<textarea name="hotlinkScopeContent" rows="4" placeholder="留空时应用到全部资源"></textarea></label></div><div class="switch-list compact-switches"><label><span><strong>启用防盗链</strong></span><input type="checkbox" name="hotlinkEnabled"></label><label><span><strong>允许空 Referer</strong></span><input type="checkbox" name="hotlinkAllowEmpty"></label></div></div>
+              <div class="config-subsection"><h4>跨域设置</h4><div class="detail-form-grid"><label>CORS 允许来源<input name="corsOrigin" placeholder="*"></label><label>CORS 允许方法<input name="corsMethods" placeholder="GET POST OPTIONS"></label><label>CORS 允许请求头<input name="corsHeaders" placeholder="Content-Type Authorization"></label><label>CORS 暴露响应头<input name="corsExposeHeaders" placeholder="Content-Length Content-Range"></label><label>CORS 预检缓存秒数<input name="corsMaxAge" type="number" min="0" value="1728000"></label></div><div class="switch-list compact-switches"><label><span><strong>启用 CORS</strong></span><input type="checkbox" name="corsEnabled"></label><label><span><strong>允许携带凭据</strong></span><input type="checkbox" name="corsCredentials"></label></div></div>
+            </section>
+            <section id="siteAdvanced" class="detail-section">
+              <div class="site-config-heading"><div><h3>高级配置</h3><p>设置传输、错误页、请求头、响应头和 URL 转向。</p></div></div>
+              <div class="config-subsection"><h4>传输与请求</h4><div class="detail-form-grid"><label>上传文件上限<input name="postSizeLimit" type="number" min="0" placeholder="留空表示不限制"></label><label>大小单位<select name="postSizeUnit"><option value="B">B</option><option value="K">KB</option><option value="M" selected>MB</option><option value="G">GB</option></select></label><label>搜索引擎专用回源 IP<input name="spiderToSip" placeholder="留空关闭"></label><label class="full">Gzip MIME 类型<textarea name="gzipTypes" rows="3" placeholder="text/plain text/css application/javascript application/json"></textarea></label></div><div class="switch-list compact-switches"><label><span><strong>WebSocket</strong></span><input type="checkbox" name="websocket"></label><label><span><strong>Gzip 压缩</strong></span><input type="checkbox" name="gzip"></label><label><span><strong>IPv6 访问</strong></span><input type="checkbox" name="ipv6"></label><label><span><strong>实时接收数据</strong></span><input type="checkbox" name="recvRealTime"></label><label><span><strong>实时发送数据</strong></span><input type="checkbox" name="sendRealTime"></label><label><span><strong>ACME 验证请求直接回源</strong></span><input type="checkbox" name="acmeProxyToOrigin"></label></div></div>
+              <div class="config-subsection"><h4>自定义错误页</h4><div class="detail-form-grid"><label>403 拒绝访问<textarea name="page403" rows="4" placeholder="留空使用系统默认页面"></textarea></label><label>404 资源不存在<textarea name="page404" rows="4" placeholder="留空使用系统默认页面"></textarea></label><label>500 程序错误<textarea name="page500" rows="4" placeholder="留空使用系统默认页面"></textarea></label><label>502 源站连接错误<textarea name="page502" rows="4" placeholder="留空使用系统默认页面"></textarea></label><label>504 源站连接超时<textarea name="page504" rows="4" placeholder="留空使用系统默认页面"></textarea></label></div></div>
+              <div class="config-subsection"><div class="subsection-title"><h4>源站请求头</h4><button id="addSiteRequestHeader" class="secondary" type="button">＋ 添加</button></div><div id="siteRequestHeaderList" class="rule-builder detail-rule-builder"></div></div>
+              <div class="config-subsection"><div class="subsection-title"><h4>CDN 响应头</h4><button id="addSiteResponseHeader" class="secondary" type="button">＋ 添加</button></div><div id="siteResponseHeaderList" class="rule-builder detail-rule-builder"></div></div>
+              <div class="config-subsection"><div class="subsection-title"><h4>URL 转向</h4><button id="addSiteRewrite" class="secondary" type="button">＋ 添加</button></div><div id="siteRewriteList" class="rule-builder detail-rule-builder"></div></div>
+            </section>
+            <div class="sticky-actions"><span id="siteDetailSaveHint">修改仅在点击保存后同步到 CDN。</span><button type="button" class="secondary" id="cancelSiteDetail">取消修改</button><button type="submit" class="primary">保存配置</button></div>
+          </form>
+        </section>
+
+        <section id="security" class="view customer-only">
+          <div class="section-head"><div><small class="section-context">网站与安全</small><h3 id="securityPageTitle">安全策略</h3><p id="securityPageSubtitle">管理网站分组、证书、DNS API 与防护规则</p></div></div>
+          <section class="module-banner page-hero"><div class="hero-copy"><small id="resourceKicker">SECURITY MANAGEMENT</small><span id="resourceHeroIcon" class="banner-icon">◇</span><div><h3 id="resourceHeroTitle">安全策略</h3><p id="resourceHeroDescription">管理网站访问控制和安全防护配置。</p></div></div><span id="resourceScopePill" class="isolation-pill">账户资源</span></section>
+          <div class="ops-summary page-metrics resource-metrics">
+            <div><span class="summary-icon blue">#</span><p id="resourceMetricLabelOne">当前资源<strong id="resourceMetricOne">0</strong><small>当前分类资源数量</small></p></div>
+            <div><span class="summary-icon green">✓</span><p id="resourceMetricLabelTwo">可用资源<strong id="resourceMetricTwo">0</strong><small>当前可使用的配置</small></p></div>
+            <div><span class="summary-icon amber">⌁</span><p id="resourceMetricLabelThree">管理方式<strong id="resourceMetricThree">分类配置</strong><small>按资源类型集中管理</small></p></div>
+            <div><span class="summary-icon rose">◎</span><p id="resourceMetricLabelFour">防护状态<strong id="resourceMetricFour">清晰可控</strong><small>查看并调整网站防护策略</small></p></div>
+          </div>
+          <div class="workbench-layout resource-workbench">
+            <aside id="resourceContextRail" class="workbench-rail hidden" aria-label="证书与 DNS 管理">
+              <button class="active" type="button" data-resource-context="certs"><span class="summary-icon blue">▣</span><div><strong>证书列表</strong><small>查看证书、签发状态和有效期</small></div></button>
+              <button type="button" data-resource-context="cert-defaults"><span class="summary-icon amber">⚙</span><div><strong>默认设置</strong><small>设置新建证书的签发方式</small></div></button>
+              <button type="button" data-resource-context="dnsapis"><span class="summary-icon green">⌁</span><div><strong>DNS API</strong><small>管理自动签发所需的验证凭据</small></div></button>
+            </aside>
+            <section class="panel workbench-main">
+              <div id="ccResourceTabs" class="resource-kind-tabs hidden" role="tablist" aria-label="CC 防护资源"><button class="active" type="button" data-resource-kind="cc-rules">规则管理</button><button type="button" data-resource-kind="cc-matchs">匹配器</button><button type="button" data-resource-kind="cc-filters">过滤器</button></div>
+              <div class="toolbar resource-action-toolbar"><div class="toolbar-actions"><button id="newResourceButton" class="primary">＋ 新建资源</button><button id="resourceBulkEnable" class="secondary" type="button" disabled>✓ 启用</button><button id="resourceBulkDisable" class="secondary" type="button" disabled>× 停用</button><button id="resourceBulkDelete" class="danger-button" type="button" disabled>删除</button></div><button id="refreshResources" class="icon-button" type="button" aria-label="刷新资源" title="刷新资源">↻</button></div>
+              <div class="toolbar resource-filter-toolbar"><div class="resource-subtabs" aria-label="资源分类"><button class="active" type="button" data-resource-subtab="all">全部</button><button type="button" data-resource-subtab="active">可用</button><button type="button" data-resource-subtab="disabled">停用</button></div><label class="search"><span>⌕</span><input id="resourceSearch" placeholder="搜索名称、说明或 ID"></label><span id="resourceSelectionCount" class="selection-count hidden">已选择 0 项</span><span id="resourceCount" class="count-label">0 项</span></div>
+              <div class="table-wrap"><table class="data-table"><thead><tr><th class="select-cell"><input id="selectAllResources" type="checkbox" aria-label="全选资源"></th><th>ID</th><th>名称</th><th>类型</th><th id="resourceDescriptionHeader">说明</th><th id="resourceCreatedHeader" class="hidden">创建时间</th><th id="resourceExpiresHeader" class="hidden">到期时间</th><th id="resourceAutoRenewHeader" class="hidden">自动续签</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="resourceTable"></tbody></table></div>
+              <div id="resourcesEmpty" class="empty hidden"><span>◇</span><h4>暂无资源</h4><p>当前分类下没有可用资源</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="data" class="view customer-only">
+          <div class="section-head"><div><small class="section-context">数据详情</small><h3 id="dataPageTitle">转发列表</h3><p id="dataPageSubtitle">管理四层转发、监控查询和处理任务</p></div></div>
+          <section class="module-banner page-hero"><div class="hero-copy"><small id="dataHeroKicker">LAYER 4 FORWARDING</small><span id="dataHeroIcon" class="banner-icon">⌁</span><div><h3 id="dataHeroTitle">四层转发管理</h3><p id="dataHeroDescription">管理 TCP/UDP 监听、源站与分组配置。</p></div></div><span id="dataScopePill" class="isolation-pill">账户数据</span></section>
+          <div class="ops-summary data-summary page-metrics">
+            <div><span class="summary-icon blue">⌁</span><p id="dataMetricLabelOne">四层转发<strong id="dataSummaryStreams">0</strong><small id="dataMetricHintOne">转发数量</small></p></div>
+            <div><span class="summary-icon green">◎</span><p id="dataMetricLabelTwo">可监控网站<strong id="dataSummarySites">0</strong><small id="dataMetricHintTwo">已接入监控的网站</small></p></div>
+            <div><span class="summary-icon amber">↻</span><p id="dataMetricLabelThree">异步任务<strong id="dataSummaryJobs">-</strong><small id="dataMetricHintThree">刷新、预热与下载任务</small></p></div>
+            <div><span class="summary-icon rose">◫</span><p id="dataMetricLabelFour">端口用量<strong id="dataSummaryPorts">0 / 0</strong><small id="dataMetricHintFour">套餐端口额度</small></p></div>
+          </div>
+          <div class="workbench-layout data-workbench">
+            <aside id="dataTabs" class="workbench-rail data-rail" role="tablist">
+              <button class="active" data-data-tab="streams"><span class="summary-icon blue">⌁</span><div><strong>四层转发</strong><small>监听、分组和源站管理</small></div></button>
+              <button data-data-tab="monitor"><span class="summary-icon green">▥</span><div><strong>网站监控</strong><small>带宽、流量、请求和排行</small></div></button>
+              <button data-data-tab="jobs"><span class="summary-icon amber">↻</span><div><strong>刷新预热</strong><small>缓存刷新、预热和日志下载</small></div></button>
+              <button data-data-tab="configs"><span class="summary-icon blue">⚙</span><div><strong>默认设置</strong><small>站点、转发与证书默认项</small></div></button>
+            </aside>
+            <div class="data-workbench-main">
+
+          <div id="dataStreams" class="data-pane active">
+            <section class="panel"><div class="toolbar stream-action-toolbar"><div class="toolbar-actions"><button id="newStreamResource" class="primary">＋ 新建转发</button><button id="streamBulkEnable" class="secondary" type="button" disabled>✓ 启用</button><button id="streamBulkDisable" class="secondary" type="button" disabled>× 停用</button><button id="streamBulkDelete" class="danger-button" type="button" disabled>删除</button></div><div><strong id="streamPaneTitle">转发列表</strong><span id="streamSelectionCount" class="selection-count hidden">已选择 0 项</span></div></div><div class="toolbar stream-filter-toolbar"><label class="search"><span>⌕</span><input id="streamSearch" placeholder="搜索名称、监听或源站"></label><span id="streamPaneDescription" class="count-label">管理四层转发规则</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th class="select-cell"><input id="selectAllStreams" type="checkbox" aria-label="全选四层资源"></th><th>ID</th><th id="streamNameHeading">名称 / 监听</th><th id="streamOriginHeading">源站</th><th id="streamPlanHeading">所属套餐</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="streamTable"></tbody></table></div><div id="streamsEmpty" class="empty hidden"><span>⌁</span><h4 id="streamsEmptyTitle">暂无四层转发</h4><p id="streamsEmptyDescription">新建转发后将在这里显示</p></div></section>
+          </div>
+
+          <div id="streamDetailMount"></div>
+
+          <div id="dataMonitor" class="data-pane">
+            <div class="monitor-workbench">
+              <aside id="monitorRail" class="workbench-rail monitor-rail" aria-label="监控与日志分类">
+                <button class="active" type="button" data-monitor-mode="basic" data-monitor-context-item="site" data-endpoint="realtime" data-metric="traffic"><span class="summary-icon blue">▥</span><div><strong>基础数据</strong><small>带宽、流量、请求与 QPS</small></div></button>
+                <button type="button" data-monitor-mode="quality" data-monitor-context-item="site" data-endpoint="realtime" data-metric="status-4xx"><span class="summary-icon green">◴</span><div><strong>质量监控</strong><small>命中率及 4xx/5xx 状态</small></div></button>
+                <button type="button" data-monitor-mode="origin" data-monitor-context-item="site" data-endpoint="realtime" data-metric="backend-bandwidth"><span class="summary-icon amber">↥</span><div><strong>回源监控</strong><small>回源带宽、流量与耗时</small></div></button>
+                <button type="button" data-monitor-mode="ranking" data-monitor-context-item="site" data-endpoint="top" data-metric="top-domain"><span class="summary-icon rose">⌘</span><div><strong>数据排行</strong><small>域名、IP 和热门 URL 排行</small></div></button>
+                <button type="button" data-monitor-mode="attack" data-monitor-context-item="logs" data-endpoint="attack-log"><span class="summary-icon rose">!</span><div><strong>拦截日志</strong><small>攻击拦截与封禁记录</small></div></button>
+                <button type="button" data-monitor-mode="access" data-monitor-context-item="logs" data-endpoint="access-log"><span class="summary-icon blue">▤</span><div><strong>访问日志</strong><small>请求明细与下载记录</small></div></button>
+                <button type="button" data-monitor-mode="stream" data-monitor-context-item="logs" data-endpoint="stream-realtime" data-metric="stream-traffic"><span class="summary-icon green">⌁</span><div><strong>转发监控</strong><small>监听端口带宽和流量</small></div></button>
+                <button type="button" data-monitor-mode="usage" data-monitor-context-item="logs" data-endpoint="usage" data-metric="traffic"><span class="summary-icon amber">▥</span><div><strong>用量查询</strong><small>网站与转发资源用量</small></div></button>
+                <button type="button" data-monitor-mode="operation" data-monitor-context-item="audit" data-endpoint="operation-log" data-local-log-kind="op"><span class="summary-icon blue">▤</span><div><strong>操作日志</strong><small>资源配置与账号操作记录</small></div></button>
+                <button type="button" data-monitor-mode="login" data-monitor-context-item="audit" data-endpoint="login-log" data-local-log-kind="login"><span class="summary-icon green">◴</span><div><strong>登录日志</strong><small>登录结果、时间与来源地址</small></div></button>
+              </aside>
+              <div class="monitor-main">
+                <section id="monitorQueryPanel" class="panel query-panel">
+                  <form id="monitorForm" class="query-grid">
+                    <label id="monitorSiteField">网站<select name="siteId" required></select></label>
+                    <label id="monitorStreamField" class="hidden">监听端口<input name="port" inputmode="numeric" placeholder="留空查询全部可见端口"></label>
+                    <label>数据类型<select name="endpoint"><option value="realtime">网站实时指标</option><option value="stream-realtime">转发实时指标</option><option value="stream-top">转发资源排行</option><option value="access-log">访问日志</option><option value="attack-log">攻击日志</option><option value="attack-stats">攻击统计</option><option value="top">网站资源排行</option><option value="blackip">IP 黑名单</option><option value="history-blackip">历史黑名单</option><option value="usage">资源用量</option></select></label>
+                    <label id="monitorMetricField"><span id="monitorMetricLabel">指标</span><select name="metric"></select></label>
+                    <label>开始时间<input name="start" type="datetime-local" required></label>
+                    <label>结束时间<input name="end" type="datetime-local" required></label>
+                    <fieldset class="preset-range"><legend>快捷范围</legend><div class="preset-range-buttons"><button class="hidden" type="button" data-monitor-minutes="10">10 分钟</button><button class="hidden" type="button" data-monitor-minutes="30">30 分钟</button><button type="button" data-monitor-hours="1">1 小时</button><button type="button" data-monitor-hours="6">6 小时</button><button type="button" data-monitor-hours="12">12 小时</button><button type="button" data-monitor-hours="24">24 小时</button><button type="button" data-monitor-today>今天</button></div></fieldset>
+                    <button class="primary" type="submit">↻ 查询</button>
+                  </form>
+                </section>
+                <section id="monitorCharts" class="monitor-chart-grid hidden"><article class="panel monitor-chart-card"><div class="panel-head"><div><h3 id="monitorChartTitle">趋势</h3><p>按当前查询范围聚合</p></div><span id="monitorChartUnit" class="badge active">自动</span></div><div class="chart-wrap"><canvas id="monitorChart" width="900" height="310"></canvas><div id="monitorChartEmpty" class="chart-empty">当前范围暂无数据</div></div></article><article class="panel monitor-summary-card"><div class="panel-head"><div><h3>查询摘要</h3><p>汇总本账户可见资源的数据</p></div></div><div id="monitorSummary" class="monitor-summary"></div></article></section>
+                <section id="monitorResults" class="panel monitor-results"><div class="toolbar"><strong>查询结果</strong><span id="monitorCount" class="count-label">0 项</span></div><div class="table-wrap"><table id="monitorResultTable"><thead><tr id="monitorTableHead"><th>时间 / 资源</th><th>数值 / 状态</th><th>范围 / 地址</th><th>详情</th></tr></thead><tbody id="monitorTable"></tbody></table></div><div id="monitorEmpty" class="empty"><span>⌁</span><h4>暂无查询结果</h4><p>选择范围后查询</p></div></section>
+                <section id="localLogPanel" class="panel monitor-results hidden"><div class="toolbar"><strong id="localLogTitle">操作日志</strong><span id="localLogCount" class="count-label">0 项</span><button id="refreshLocalLogs" class="secondary" type="button">↻ 刷新</button></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>动作</th><th>操作对象</th><th>IP</th><th class="right">详情</th></tr></thead><tbody id="localLogTable"></tbody></table></div><div id="localLogsEmpty" class="empty hidden"><span>▤</span><h4>暂无日志</h4></div></section>
+              </div>
+            </div>
+          </div>
+
+          <div id="dataJobs" class="data-pane">
+            <div class="section-head compact"><div><h3>异步任务</h3></div><button id="newJobButton" class="primary">＋ 提交任务</button></div>
+            <section class="panel"><div class="table-wrap"><table><thead><tr><th>任务</th><th>状态</th><th>创建时间</th><th>ID</th><th class="right">操作</th></tr></thead><tbody id="jobTable"></tbody></table></div><div id="jobsEmpty" class="empty hidden"><span>↻</span><h4>暂无任务</h4><p>缓存刷新与日志下载任务会显示在这里</p></div></section>
+          </div>
+
+          <div id="dataConfigs" class="data-pane">
+            <section class="panel default-config-panel"><div class="panel-head"><div><h3 id="userConfigPanelTitle">网站默认设置</h3><p>设置新建资源时默认采用的配置，可在创建时调整</p></div><div id="userConfigTypeTabs" class="resource-subtabs"><button type="button" class="active" data-config-type="site">网站</button><button type="button" data-config-type="stream">四层转发</button><button type="button" data-config-type="cert">证书</button></div></div><form id="userConfigForm" class="config-editor"><input type="hidden" name="id"><input type="hidden" name="type" value="site"><label>设置项<select name="name" required></select></label><label id="userConfigValueField">设置值<span id="userConfigValueMount"><input name="value" required></span></label><label>生效范围<select name="scopeName"><option value="global">全部资源</option><option value="group">指定分组</option></select></label><label id="userConfigScopeField" class="hidden">选择分组<select name="scopeId"></select></label><label class="switch-inline"><span>启用设置</span><input name="enabled" type="checkbox" checked></label><div class="config-editor-actions"><button id="cancelUserConfig" class="secondary hidden" type="button">取消编辑</button><button class="primary" type="submit">保存设置</button></div></form><div class="table-wrap"><table class="data-table"><thead><tr><th>ID</th><th>设置项</th><th>模块</th><th>生效范围</th><th>设置值</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="userConfigTable"></tbody></table></div><div id="userConfigsEmpty" class="empty hidden"><span>⚙</span><h4>暂无默认设置</h4><p>新增设置后会用于新建资源</p></div></section>
+          </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="stream-detail" class="view customer-only">
+          <div class="stream-detail-hero"><button id="backToStreams" class="secondary">← 返回列表</button><div><p><span id="detailStreamId">ID: -</span><b id="detailStreamState" class="badge pending">待同步</b></p><h3 id="detailStreamName">转发管理</h3></div><button id="syncStreamDetail" class="primary">↻ 同步配置</button></div>
+          <form id="streamDetailForm" class="stream-detail-form">
+            <section class="panel detail-section"><div class="panel-head"><div><h3>基本信息</h3><p>套餐归属、分组、CNAME 和监听端口</p></div></div><div class="detail-form-grid"><label>所属套餐<select name="subscriptionId" required></select></label><label>转发分组<select name="groupId"><option value="">不分组</option></select></label><label>资源名称<input name="description" required></label><label>完整 CNAME<input name="cname" readonly></label><label>服务同步状态<input name="syncState" readonly></label><label>监听端口<input name="listenPort" type="number" min="1" max="65535" required></label><label>协议<select name="protocol"><option value="tcp">TCP</option><option value="udp">UDP</option></select></label></div></section>
+            <section class="panel detail-section"><div class="panel-head"><div><h3>源站设置</h3><p>后端地址、端口与负载方式</p></div></div><div class="detail-form-grid"><label>源站地址<input name="backendAddr" required></label><label>源站端口<input name="backendPort" type="number" min="1" max="65535" required></label><label>负载方式<select name="balanceWay"><option value="rr">轮询</option><option value="ip_hash">源 IP 哈希</option></select></label><label class="switch-inline"><span>启用转发</span><input name="enabled" type="checkbox"></label></div></section>
+            <div class="sticky-actions"><button type="button" id="cancelStreamDetail" class="secondary">取消修改</button><button type="submit" class="primary">保存配置</button></div>
+          </form>
+        </section>
+
+        <section id="admin-overview" class="view admin-only">
+          <div class="section-head"><div><small class="section-context">平台运营</small><h3>管理控制台</h3><p>查看客户、站点、套餐、交易和上游服务运行状态</p></div><button id="refreshAdminOverview" class="secondary">↻ 刷新数据</button></div>
+          <section class="module-banner page-hero admin-hero"><div class="hero-copy"><small>PLATFORM OVERVIEW</small><span class="banner-icon">◆</span><div><h3>分销运营总览</h3><p>集中查看平台资源、客户配额和 CDN 服务状态。</p></div></div><span class="isolation-pill">管理员专属</span></section>
+          <div class="admin-welcome"><div><p class="section-kicker">PLATFORM OPERATIONS</p><h3>平台运行正常</h3><p>客户资源由本系统独立管理，上游普通用户套餐仅用于承载实际 CDN 资源。</p></div><aside><span>限额执行</span><strong id="adminEnforcementState">正常</strong></aside></div>
+          <div class="ops-summary admin-summary"><div><span class="summary-icon blue">♙</span><p>客户账号<strong id="adminOverviewUsers">0</strong></p></div><div><span class="summary-icon green">◎</span><p>平台站点<strong id="adminOverviewSites">0</strong></p></div><div><span class="summary-icon amber">¥</span><p>生效订阅<strong id="adminOverviewSubscriptions">0</strong></p></div><div><span class="summary-icon rose">✓</span><p>已支付订单<strong id="adminOverviewPending">0</strong></p></div></div>
+          <div class="admin-dashboard-grid">
+            <section class="panel"><div class="panel-head"><div><h3>最近客户</h3><p>新注册与近期创建的客户账号</p></div><button class="text-button" data-view-link="users">客户管理 →</button></div><div class="table-wrap"><table><thead><tr><th>客户</th><th>套餐</th><th>网站</th><th>状态</th></tr></thead><tbody id="adminRecentUsers"></tbody></table></div></section>
+            <section class="panel"><div class="panel-head"><div><h3>交易记录</h3><p>最近余额支付订单</p></div><button class="text-button" data-admin-dashboard-link="orders">订单记录 →</button></div><div class="table-wrap"><table><thead><tr><th>订单</th><th>客户</th><th>金额</th><th>状态</th></tr></thead><tbody id="adminRecentOrders"></tbody></table></div></section>
+          </div>
+          <section class="panel admin-resource-panel"><div class="panel-head"><div><h3>客户资源状态</h3><p>超限客户的网站与转发会自动暂停</p></div><button class="text-button" data-admin-dashboard-link="usage">查看全部 →</button></div><div id="adminResourceSummary" class="admin-resource-summary"></div></section>
+        </section>
+
+        <section id="users" class="view admin-only">
+          <div class="section-head"><div><small class="section-context">运营管理</small><h3>客户管理</h3><p>创建和管理相互独立的客户账号、余额和套餐资源</p></div><button id="newUserButton" class="primary">＋ 创建客户</button></div>
+          <section class="module-banner page-hero admin-hero"><div class="hero-copy"><small>CUSTOMER MANAGEMENT</small><span class="banner-icon">♙</span><div><h3>客户管理</h3><p>查询客户资料、资源使用情况和套餐状态。</p></div></div><span class="isolation-pill">运营管理</span></section>
+          <div class="ops-summary admin-summary"><div><span class="summary-icon blue">♙</span><p>客户总数<strong id="adminCustomerTotal">0</strong></p></div><div><span class="summary-icon green">✓</span><p>正常客户<strong id="adminCustomerActive">0</strong></p></div><div><span class="summary-icon amber">◫</span><p>有效套餐<strong id="adminCustomerPlans">0</strong></p></div><div><span class="summary-icon rose">◎</span><p>站点总数<strong id="adminCustomerSites">0</strong></p></div></div>
+          <section class="panel"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="customerSearch" placeholder="搜索用户名或邮箱"></label><select id="customerStatus" aria-label="客户状态"><option value="">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option></select></div><div class="table-wrap"><table><thead><tr><th>客户</th><th>当前套餐</th><th>网站 / 订单</th><th>状态</th><th>创建时间</th><th class="right">操作</th></tr></thead><tbody id="userTable"></tbody></table></div><div id="customersPager" class="pager"></div></section>
+        </section>
+
+        <section id="admin-sites" class="view admin-only">
+          <div class="section-head"><div><small class="section-context">运营管理</small><h3>站点管理</h3><p>按客户查看和管理全平台加速站点</p></div><button id="newAdminSiteButton" class="primary">＋ 新建站点</button></div>
+          <section class="module-banner page-hero admin-hero"><div class="hero-copy"><small>GLOBAL SITE MANAGEMENT</small><span class="banner-icon">▣</span><div><h3>全平台网站管理</h3><p>按客户、套餐、源站和状态查询平台网站。</p></div></div><span class="isolation-pill">全局视图</span></section>
+          <section class="panel"><div class="toolbar"><label class="search"><span>⌕</span><input id="adminSiteSearch" placeholder="搜索客户、域名或源站"></label><span id="adminSiteCount" class="count-label">0 个站点</span></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>客户</th><th>所属套餐</th><th>源站</th><th>状态</th><th>创建时间</th><th class="right">操作</th></tr></thead><tbody id="adminSiteTable"></tbody></table></div><div id="adminSitesPager" class="pager"></div></section>
+        </section>
+
+        <section id="admin-streams" class="view admin-only">
+          <div class="section-head"><div><small class="section-context">运营管理</small><h3>四层转发</h3><p>按客户和套餐管理全平台 TCP/UDP 监听与源站</p></div><button id="newAdminStreamButton" class="primary">＋ 新建转发</button></div>
+          <section class="module-banner page-hero admin-hero"><div class="hero-copy"><small>GLOBAL LAYER 4 FORWARDING</small><span class="banner-icon">⌁</span><div><h3>全平台四层转发</h3><p>查看监听、完整 CNAME、源站端口和服务同步状态。</p></div></div><span class="isolation-pill">全局视图</span></section>
+          <div class="ops-summary admin-summary"><div><span class="summary-icon blue">⌁</span><p>转发总数<strong id="adminStreamTotal">0</strong></p></div><div><span class="summary-icon green">✓</span><p>运行中<strong id="adminStreamEnabled">0</strong></p></div><div><span class="summary-icon amber">◫</span><p>监听端口<strong id="adminStreamPorts">0</strong></p></div><div><span class="summary-icon rose">♙</span><p>当前页客户<strong id="adminStreamCustomers">0</strong></p></div></div>
+          <section class="panel"><div class="toolbar"><label class="search"><span>⌕</span><input id="adminStreamSearch" placeholder="搜索客户、资源 ID 或上游 ID"></label><span id="adminStreamCount" class="count-label">0 个转发</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>名称 / CNAME</th><th>客户 / 套餐</th><th>监听</th><th>源站</th><th>同步状态</th><th>更新时间</th><th class="right">操作</th></tr></thead><tbody id="adminStreamTable"></tbody></table></div><div id="adminStreamsEmpty" class="empty hidden"><span>⌁</span><h4>暂无四层转发</h4><p>可以为已有有效套餐的客户创建转发。</p></div><div id="adminStreamsPager" class="pager"></div></section>
+        </section>
+
+        <section id="billing" class="view customer-only">
+          <div class="section-head"><div><small class="section-context">资源管理</small><h3 id="billingPageTitle">我的套餐</h3><p id="billingPageSubtitle">查看当前套餐资源、有效期和绑定资源</p></div><button id="refreshBilling" class="secondary">↻ 刷新</button></div>
+          <div id="billingWarning" class="quota-warning hidden"></div>
+          <section class="wallet-hero tenant-billing-pane" data-tenant-billing-pane="current,wallet">
+            <div class="wallet-summary"><div><small>可用余额</small><strong id="walletBalance">¥0.00</strong></div><div><small>累计充值</small><strong id="walletRecharge">¥0.00</strong></div><div><small>累计消费</small><strong id="walletSpent">¥0.00</strong></div><p>套餐、增值项和流量包均使用余额即时支付</p></div>
+            <form id="rechargeCodeForm" class="wallet-recharge"><label>充值码<input name="code" required autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX"></label><button class="primary" type="submit">立即充值</button></form>
+          </section>
+          <section class="panel billing-section tenant-billing-pane" data-tenant-billing-pane="wallet">
+            <div class="panel-head"><div><h3>余额流水</h3><p>最近 100 条充值和消费明细</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>时间</th><th>说明</th><th>类型</th><th>金额</th><th>交易后余额</th></tr></thead><tbody id="walletTransactionTable"></tbody></table></div>
+            <div id="walletTransactionsEmpty" class="empty hidden"><span>¥</span><h4>暂无余额流水</h4></div>
+          </section>
+          <section class="panel tenant-billing-pane subscription-list-panel" data-tenant-billing-pane="current"><div class="panel-head"><div><h3>我的套餐实例</h3><p>同一账号可持有多个套餐，并分别绑定网站和转发</p></div></div><div id="subscriptionCards" class="subscription-cards"></div></section>
+          <section class="panel billing-current tenant-billing-pane" data-tenant-billing-pane="current,usage">
+            <div class="panel-head"><div><h3 id="currentPlanName">未分配套餐</h3><p id="currentPlanPeriod">-</p></div><span id="currentPlanStatus" class="badge off">未生效</span></div>
+            <div id="quotaGrid" class="quota-grid"></div>
+          </section>
+          <section class="panel billing-section redeem-panel tenant-billing-pane" data-tenant-billing-pane="current">
+            <div><h3>兑换权益</h3><p>输入服务商发放的兑换码，权益核销后立即生效</p></div>
+            <form id="redeemForm" class="inline-form"><input name="code" required autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX"><button class="primary" type="submit">兑换</button></form>
+          </section>
+          <section class="panel billing-section tenant-billing-pane" data-tenant-billing-pane="current">
+            <div class="panel-head"><div><h3>可选套餐</h3><p>余额充足时支付后立即生效</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>套餐</th><th>价格 / 周期</th><th>加速域名</th><th>月流量</th><th>HTTP / 转发端口</th><th class="right">操作</th></tr></thead><tbody id="planCatalogTable"></tbody></table></div>
+          </section>
+          <section class="panel billing-section tenant-billing-pane" data-tenant-billing-pane="addons">
+            <div class="panel-head"><div><h3>增值项与流量包</h3><p>选择需要扩容的套餐实例后下单</p></div><label class="compact-select">目标套餐<select id="addonSubscriptionSelect"></select></label></div>
+            <div class="table-wrap"><table><thead><tr><th>商品</th><th>类型</th><th>权益</th><th>价格</th><th class="right">操作</th></tr></thead><tbody id="addonCatalogTable"></tbody></table></div>
+          </section>
+          <section class="panel billing-section tenant-billing-pane" data-tenant-billing-pane="usage"><div class="panel-head"><div><h3>分套餐用量</h3><p>每个套餐独立计算域名、流量和端口额度</p></div></div><div class="table-wrap"><table><thead><tr><th>套餐实例</th><th>绑定资源</th><th>域名</th><th>月流量</th><th>端口</th><th>状态</th></tr></thead><tbody id="subscriptionUsageTable"></tbody></table></div></section>
+          <section class="panel billing-section tenant-billing-pane" data-tenant-billing-pane="wallet">
+            <div class="panel-head"><div><h3>我的订单</h3><p>套餐、增值项与流量包交易记录</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>订单</th><th>类型</th><th>金额</th><th>状态</th><th>创建时间</th></tr></thead><tbody id="tenantOrderTable"></tbody></table></div>
+          </section>
+          <section class="panel billing-section tenant-billing-pane" data-tenant-billing-pane="wallet"><div class="panel-head"><div><h3>兑换记录</h3><p>已成功兑换的套餐和权益</p></div></div><div class="table-wrap"><table><thead><tr><th>商品</th><th>类型</th><th>兑换码</th><th>订单</th><th>时间</th></tr></thead><tbody id="redemptionHistoryTable"></tbody></table></div></section>
+        </section>
+
+        <section id="billing-admin" class="view admin-only">
+          <div class="section-head"><div><small class="section-context">资源与财务</small><h3>套餐管理</h3><p>套餐、余额、交易和客户订阅由本分销系统统一管理</p></div></div>
+          <section class="module-banner page-hero admin-hero"><div class="hero-copy"><small>BILLING MANAGEMENT</small><span class="banner-icon">▰</span><div><h3>套餐与交易管理</h3><p>管理商品目录、客户套餐、余额流水和财务报表。</p></div></div><span class="isolation-pill">财务专属</span></section>
+          <div class="ops-summary admin-summary" data-admin-billing-summary="package"><div><span class="summary-icon blue">▰</span><p>套餐数量<strong id="adminBillingPlans">0</strong></p></div><div><span class="summary-icon green">✓</span><p>生效订阅<strong id="adminBillingSubscriptions">0</strong></p></div><div><span class="summary-icon amber">◫</span><p>权益兑换码<strong id="adminBillingCodes">0</strong></p></div><div><span class="summary-icon rose">!</span><p>超限客户<strong id="adminBillingOverLimit">0</strong></p></div></div>
+          <div class="ops-summary admin-summary hidden" data-admin-billing-summary="finance"><div><span class="summary-icon blue">¥</span><p>客户余额合计<strong id="adminFinanceBalance">¥0.00</strong></p></div><div><span class="summary-icon green">✓</span><p>可用充值码<strong id="adminFinanceRechargeCodes">0</strong></p></div><div><span class="summary-icon amber">◫</span><p>已支付订单<strong id="adminFinancePaidOrders">0</strong></p></div><div><span class="summary-icon rose">↑</span><p>订单成交额<strong id="adminFinanceRevenue">¥0.00</strong></p></div></div>
+          <div class="ops-summary admin-summary hidden" data-admin-billing-summary="operations"><div><span class="summary-icon blue">♙</span><p>客户总数<strong id="adminUsageCustomers">0</strong></p></div><div><span class="summary-icon green">◎</span><p>客户站点<strong id="adminUsageSites">0</strong></p></div><div><span class="summary-icon amber">✓</span><p>生效订阅<strong id="adminUsageSubscriptions">0</strong></p></div><div><span class="summary-icon rose">!</span><p>超限客户<strong id="adminUsageOverLimit">0</strong></p></div></div>
+          <div id="adminBillingTabs" class="resource-tabs" role="tablist">
+            <button class="active" data-billing-tab="plans">套餐</button><button data-billing-tab="groups">分组</button><button data-billing-tab="upgrades">增值项</button><button data-billing-tab="traffic">流量包</button><button data-billing-tab="codes">权益兑换码</button><button data-billing-tab="wallets">客户余额</button><button data-billing-tab="recharge">余额充值码</button><button data-billing-tab="subscriptions">客户套餐</button><button data-billing-tab="orders">订单</button><button data-billing-tab="reports">财务报表</button><button data-billing-tab="usage">客户用量</button>
+          </div>
+          <section class="panel billing-admin-pane active" data-billing-pane="plans"><div class="toolbar"><strong>套餐目录</strong><button id="newPlanButton" class="primary">＋ 新建套餐</button></div><div class="table-wrap"><table><thead><tr><th>套餐</th><th>上游映射</th><th>价格</th><th>加速域名</th><th>月流量</th><th>HTTP / 转发端口</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="adminPlanTable"></tbody></table></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="groups"><div class="toolbar"><strong>套餐分组</strong><button id="newGroupButton" class="primary">＋ 新建分组</button></div><div class="table-wrap"><table><thead><tr><th>名称</th><th>说明</th><th>排序</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="adminGroupTable"></tbody></table></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="upgrades"><div class="toolbar"><strong>套餐增值项</strong><button id="newUpgradeButton" class="primary">＋ 新建增值项</button></div><div class="table-wrap"><table><thead><tr><th>名称</th><th>价格</th><th>域名增量</th><th>流量增量</th><th>端口增量</th><th class="right">操作</th></tr></thead><tbody id="adminUpgradeTable"></tbody></table></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="traffic"><div class="toolbar"><strong>流量包</strong><button id="newTrafficButton" class="primary">＋ 新建流量包</button></div><div class="table-wrap"><table><thead><tr><th>名称</th><th>流量</th><th>价格</th><th>有效期</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="adminTrafficTable"></tbody></table></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="codes"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="redemptionSearch" placeholder="标签或末四位"></label><select id="redemptionStatus" aria-label="兑换码状态"><option value="">全部状态</option><option value="active">可用</option><option value="disabled">停用</option></select><button id="newRedemptionButton" class="primary">＋ 生成兑换码</button></div><div class="table-wrap"><table><thead><tr><th>标识</th><th>商品</th><th>权益数量</th><th>使用次数</th><th>有效期</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="adminRedemptionTable"></tbody></table></div><div id="redemptionPager" class="pager"></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="wallets"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="walletSearch" placeholder="客户或邮箱"></label><span class="count-label">调整均记录不可变流水</span></div><div class="table-wrap"><table><thead><tr><th>客户</th><th>邮箱</th><th>余额</th><th class="right">操作</th></tr></thead><tbody id="adminWalletTable"></tbody></table></div><div id="walletsPager" class="pager"></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="recharge"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="rechargeSearch" placeholder="标签、批次或末四位"></label><select id="rechargeStatus" aria-label="充值码状态"><option value="">全部状态</option><option value="active">可用</option><option value="disabled">停用</option></select><button id="newRechargeCodeButton" class="primary">＋ 生成充值码</button></div><div class="table-wrap"><table><thead><tr><th>标识</th><th>批次</th><th>面额</th><th>使用次数</th><th>有效期</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="adminRechargeCodeTable"></tbody></table></div><div id="rechargePager" class="pager"></div><div class="subsection-head"><strong>充值码批次</strong><span>按批次查看生成量与核销量</span></div><div class="table-wrap"><table><thead><tr><th>批次</th><th>面额</th><th>生成数量</th><th>核销进度</th><th>有效期</th></tr></thead><tbody id="rechargeBatchTable"></tbody></table></div><div id="rechargeBatchPager" class="pager"></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="subscriptions"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="subscriptionSearch" placeholder="客户或套餐"></label><select id="subscriptionStatus" aria-label="客户套餐状态"><option value="">全部状态</option><option value="active">生效</option><option value="suspended">暂停</option><option value="expired">到期</option><option value="cancelled">取消</option></select><button id="newSubscriptionButton" class="primary">＋ 分配套餐</button></div><div class="table-wrap"><table><thead><tr><th>客户</th><th>套餐实例</th><th>绑定资源</th><th>状态</th><th>有效期</th><th class="right">操作</th></tr></thead><tbody id="adminSubscriptionTable"></tbody></table></div><div id="subscriptionsPager" class="pager"></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="orders"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="orderSearch" placeholder="订单号或客户"></label><select id="orderStatus" aria-label="订单状态"><option value="">全部状态</option><option value="paid">已支付</option><option value="refunded">已退款</option><option value="cancelled">已取消</option></select></div><div class="table-wrap"><table><thead><tr><th>订单</th><th>客户</th><th>商品</th><th>金额</th><th>状态</th><th>时间</th><th class="right">操作</th></tr></thead><tbody id="adminOrderTable"></tbody></table></div><div id="ordersPager" class="pager"></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="reports"><div class="toolbar filter-toolbar report-filters"><label>开始日期<input id="financeFrom" type="date"></label><label>结束日期<input id="financeTo" type="date"></label><button id="refreshFinanceReport" class="secondary">查询</button></div><div id="financeReportSummary" class="report-grid"></div><div class="subsection-head"><strong>收支分类汇总</strong><span>按业务类型核对期间入账和支出</span></div><div class="table-wrap"><table><thead><tr><th>方向</th><th>业务类型</th><th>笔数</th><th>金额</th></tr></thead><tbody id="financeReportTable"></tbody></table></div><div class="subsection-head"><strong>最近交易明细</strong><span>当前日期范围内最近 50 条流水</span></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>客户</th><th>业务类型</th><th>说明</th><th>金额</th><th>交易后余额</th><th>关联对象</th></tr></thead><tbody id="financeTransactionTable"></tbody></table></div><div id="financeTransactionsEmpty" class="empty hidden"><span>¥</span><h4>当前日期范围暂无交易</h4></div></section>
+          <section class="panel billing-admin-pane" data-billing-pane="usage"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="usageSearch" placeholder="搜索客户"></label><span class="count-label">超出套餐额度后，相关网站和转发将暂停；额度恢复后自动恢复</span><button id="enforceBilling" class="secondary">↻ 同步用量并检查额度</button></div><div class="table-wrap"><table><thead><tr><th>客户</th><th>套餐</th><th>加速域名</th><th>月流量</th><th>HTTP / 转发端口</th><th>状态</th></tr></thead><tbody id="adminUsageTable"></tbody></table></div><div id="usagePager" class="pager"></div></section>
+        </section>
+
+        <section id="administrators" class="view admin-only">
+          <div class="section-head"><div><h3>管理员</h3><p>平台仅保留超级管理员和管理员两级</p></div><button id="newAdministratorButton" class="primary">＋ 添加管理员</button></div>
+          <section class="panel"><div class="table-wrap"><table><thead><tr><th>账号</th><th>邮箱</th><th>级别</th><th>状态</th><th>最近登录</th><th class="right">操作</th></tr></thead><tbody id="administratorTable"></tbody></table></div></section>
+        </section>
+
+        <section id="invitations" class="view admin-only">
+          <div class="section-head"><div><h3>邀请码</h3><p>生成和停用自助注册邀请码，并跟踪使用情况</p></div><button id="newInviteButton" class="primary">＋ 生成邀请码</button></div>
+          <div class="ops-summary invitation-summary">
+            <div><span class="summary-icon blue">#</span><p>邀请码总数<strong id="invitationTotal">0</strong></p></div>
+            <div><span class="summary-icon green">✓</span><p>当前有效<strong id="invitationActive">0</strong></p></div>
+            <div><span class="summary-icon amber">↗</span><p>累计使用<strong id="invitationUsed">0 次</strong></p></div>
+            <div><span class="summary-icon rose">◈</span><p>注册模式<strong id="invitationMode">无需邀请码</strong></p></div>
+          </div>
+          <section class="panel"><div class="panel-head"><div><h3>邀请码记录</h3><p>完整邀请码只在生成后展示一次</p></div><button class="secondary" data-view-link="runtime-settings" type="button">⚙ 注册参数</button></div><div class="table-wrap"><table><thead><tr><th>标识</th><th>标签</th><th>使用次数</th><th>有效期</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="inviteTable"></tbody></table></div><div id="invitesPager" class="pager"></div></section>
+        </section>
+
+        <section id="audit" class="view admin-only">
+          <div class="section-head"><div><h3>审计日志</h3><p>检索账号、资金和资源操作记录</p></div></div>
+          <section class="panel"><div class="toolbar filter-toolbar"><label class="search"><span>⌕</span><input id="auditSearch" placeholder="操作者、资源、详情或 IP"></label><input id="auditAction" placeholder="动作码，例如 site.update" aria-label="审计动作"><input id="auditFrom" type="date" aria-label="开始日期"><input id="auditTo" type="date" aria-label="结束日期"><button id="refreshAudit" class="secondary">查询</button></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>操作对象</th><th>IP</th><th class="right">详情</th></tr></thead><tbody id="auditTable"></tbody></table></div><div id="auditPager" class="pager"></div></section>
+        </section>
+
+        <section id="system-health" class="view admin-only">
+          <div class="section-head"><div><h3>系统状态</h3><p>检查影响客户访问、计费和 CDN 服务交付的运行依赖</p></div><button id="refreshSystemHealth" class="secondary">↻ 重新检测</button></div>
+          <div class="health-group">
+            <div class="section-head compact"><div><h3>核心依赖</h3><p>任一异常都会影响平台主要功能</p></div></div>
+            <div class="health-grid health-core-grid">
+              <article class="panel health-service"><header><span class="summary-icon blue">DB</span><div><small>POSTGRESQL</small><h3>主数据库</h3></div><b id="postgresHealth" class="badge pending">检测中</b></header><p>保存账号、资源归属、套餐、资金流水和审计记录。</p><footer id="postgresHealthDetail">等待探针结果</footer></article>
+              <article class="panel health-service"><header><span class="summary-icon amber">R</span><div><small>REDIS</small><h3>缓存与限流</h3></div><b id="redisHealth" class="badge pending">检测中</b></header><p>承担 CDN 接口缓存、并发合并、验证码和请求频率限制。</p><footer id="redisHealthDetail">等待探针结果</footer></article>
+              <article class="panel health-service"><header><span class="summary-icon green">API</span><div><small>CDNFLY V6</small><h3>CDN 服务连接</h3></div><b id="cdnflyHealth" class="badge pending">检测中</b></header><p>检查所有已启用上游账号的接口连通性。</p><footer id="cdnflyHealthDetail">等待探针结果</footer></article>
+            </div>
+          </div>
+          <div class="health-group">
+            <div class="section-head compact"><div><h3>业务能力</h3><p>检查自动计费和账号邮件流程</p></div></div>
+            <div class="health-grid health-operation-grid">
+              <article class="panel health-service"><header><span class="summary-icon rose">T</span><div><small>AUTOMATION</small><h3>计费与额度任务</h3></div><b id="schedulerHealth" class="badge pending">检测中</b></header><p>执行自动续费、套餐到期、用量同步和额度检查。</p><footer id="schedulerHealthDetail">等待探针结果</footer></article>
+              <article class="panel health-service"><header><span class="summary-icon blue">@</span><div><small>EMAIL</small><h3>邮件验证码</h3></div><b id="emailHealth" class="badge pending">检测中</b></header><p>用于注册验证、找回密码、自助换绑邮箱和配置测试。</p><footer id="emailHealthDetail">等待探针结果</footer></article>
+            </div>
+          </div>
+          <section class="panel health-summary"><div><span>平台状态</span><strong id="platformHealthState">检测中</strong></div><div><span>已检测上游</span><strong id="healthUpstreamCount">-</strong></div><div><span>邮箱验证</span><strong id="healthEmailRequirement">-</strong></div><div><span>最近检测</span><strong id="healthCheckedAt">-</strong></div></section>
+        </section>
+
+        <section id="upstreams" class="view admin-only">
+          <div class="section-head"><div><h3>CDNFly 上游</h3><p>管理 CDNFly 接口账号及可供平台套餐绑定的账号套餐</p></div><button id="newUpstreamButton" class="primary">＋ 添加上游</button></div>
+          <div class="ops-summary admin-summary"><div><span class="summary-icon blue">API</span><p>上游总数<strong id="upstreamTotal">0</strong></p></div><div><span class="summary-icon green">✓</span><p>正常连接<strong id="upstreamHealthy">0</strong></p></div><div><span class="summary-icon amber">▰</span><p>账号套餐<strong id="upstreamPackageTotal">0</strong></p></div><div><span class="summary-icon rose">!</span><p>异常或停用<strong id="upstreamUnavailable">0</strong></p></div></div>
+          <section class="panel"><div class="toolbar"><strong>上游账号</strong><small>客户归属按本地套餐和资源自动汇总</small><button id="refreshUpstreams" class="secondary">刷新</button></div><div class="table-wrap"><table class="upstream-table"><thead><tr><th>上游</th><th>API 地址</th><th>可用套餐</th><th>客户归属</th><th>状态</th><th>最近检测</th><th class="right">操作</th></tr></thead><tbody id="upstreamTable"></tbody></table></div><div id="upstreamEmpty" class="empty hidden"><span>API</span><h4>尚未配置上游</h4><p>添加 CDNFly 接口账号后才能创建在售套餐</p></div></section>
+        </section>
+
+        <section id="runtime-settings" class="view admin-only">
+          <div class="section-head"><div><h3>运行参数</h3><p>配置站点品牌、公告、自助注册、验证码频率和人机验证</p></div><button id="saveRuntimeSettings" class="primary" type="submit" form="runtimeSettingsForm">保存设置</button></div>
+          <form id="runtimeSettingsForm" class="settings-stack">
+            <section class="panel settings-section">
+              <div class="panel-head"><div><h3>站点与公告</h3><p>配置品牌、公告受众和展示周期</p></div><span id="announcementAdminStatus" class="badge off">未启用</span></div>
+              <div class="settings-grid">
+                <label>站点名称<input name="siteName" maxlength="60" required></label><label>联系邮箱<input name="supportEmail" type="email" maxlength="254"></label><label class="full">站点说明<input name="siteSubtitle" maxlength="160"></label>
+                <label>公告标题<input name="announcementTitle" maxlength="120"></label><label>公告级别<select name="announcementSeverity"><option value="info">信息</option><option value="success">正常</option><option value="warning">提醒</option><option value="critical">重要</option></select></label>
+                <label>公告受众<select name="announcementAudience"><option value="all">全部</option><option value="public">访客</option><option value="customers">客户</option><option value="admins">管理员</option></select></label><label>展示方式<select name="announcementMode"><option value="banner">页面横幅</option><option value="modal">首次弹窗</option></select></label>
+                <label class="switch-setting"><span><strong>展示服务公告</strong><small>仅在控制台首页、设置的时间和受众范围内展示</small></span><input name="announcementEnabled" type="checkbox"></label><label class="switch-setting"><span><strong>允许关闭</strong><small>关闭后本版本不再重复展示</small></span><input name="announcementDismissible" type="checkbox"></label>
+                <label>开始时间<input name="announcementStartsAt" type="datetime-local"></label><label>结束时间<input name="announcementEndsAt" type="datetime-local"></label><label class="full">公告内容<textarea name="announcementBody" rows="4" maxlength="1000"></textarea></label>
+                <div id="announcementPreview" class="announcement-preview full"><strong>公告预览</strong><p>保存后将按受众和时间展示</p></div>
+              </div>
+            </section>
+            <section class="panel settings-section"><div class="panel-head"><div><h3>注册与邮件验证码</h3><p>注册、找回、换绑和测试邮件共享邮箱与 IP 限流</p></div><span id="emailServiceStatus" class="badge off">未配置</span></div><div class="settings-grid"><label class="switch-setting full"><span><strong>允许新用户注册</strong><small>关闭后管理员仍可创建客户</small></span><input name="registrationEnabled" type="checkbox"></label><label class="switch-setting full"><span><strong>仅允许邀请码注册</strong><small>开启后必须提供有效邀请码</small></span><input name="inviteOnly" type="checkbox"></label><label class="switch-setting full"><span><strong>注册时验证邮箱</strong><small>关闭后填写账号资料即可注册，不发送验证码</small></span><input name="emailVerificationEnabled" type="checkbox"></label><label>发送间隔（秒）<input name="emailCodeCooldownSeconds" type="number" min="10" max="3600" required></label><label>每邮箱每小时上限<input name="emailCodeHourlyLimit" type="number" min="1" max="100" required></label><label class="full">电子邮件域白名单<small>每行一个域名，仅列表内邮箱可自助注册或更换邮箱</small><textarea name="allowedEmailDomains" rows="6" required placeholder="gmail.com"></textarea></label><div class="full inline-settings-actions"><label>测试收件邮箱<input name="testEmail" type="email"></label><button id="testEmailButton" class="secondary" type="button">发送测试邮件</button></div></div></section>
+            <section class="panel settings-section"><div class="panel-head"><div><h3>商业运行</h3><p>控制维护状态和套餐到期后的续费宽限期</p></div></div><div class="settings-grid"><label class="switch-setting full"><span><strong>维护模式</strong><small>开启后客户暂停登录和业务操作，管理员仍可进入后台</small></span><input name="maintenanceMode" type="checkbox"></label><label>续费宽限期（天）<input name="renewalGraceDays" type="number" min="0" max="30"></label></div></section>
+            <section class="panel settings-section"><div class="panel-head"><div><h3>服务条款与隐私政策</h3><p>维护公开内容并控制注册同意要求</p></div></div><div class="settings-grid"><label class="switch-setting full"><span><strong>注册时要求同意条款</strong><small>开启后服务端会校验服务条款和隐私政策同意状态</small></span><input name="legalConsentRequired" type="checkbox"></label><label>服务条款标题<input name="termsTitle" maxlength="80"></label><label>隐私政策标题<input name="privacyTitle" maxlength="80"></label><label>服务条款<textarea name="termsBody" rows="8"></textarea></label><label>隐私政策<textarea name="privacyBody" rows="8"></textarea></label></div></section>
+            <section class="panel settings-section"><div class="panel-head"><div><h3>Cloudflare Turnstile</h3><p>启用后，登录及全站邮件发送前统一校验</p></div><span id="turnstileConfigStatus" class="badge off">未配置</span></div><div class="settings-grid"><label class="switch-setting full"><span><strong>启用 Turnstile</strong><small>先保存 Site Key 和 Secret Key，测试成功后才能启用</small></span><input name="turnstileEnabled" type="checkbox"></label><label>Site Key<input name="turnstileSiteKey" autocomplete="off" maxlength="180"></label><label>Secret Key<input name="turnstileSecret" type="password" autocomplete="new-password" maxlength="300" placeholder="留空保留现有密钥"></label><div class="full inline-settings-actions"><div><div id="turnstileSettingsSlot" class="turnstile-slot"></div><small id="turnstileTestedAt">保存密钥后可进行测试</small></div><button id="testTurnstileButton" class="secondary" type="button">测试 Turnstile 配置</button></div></div></section>
+          </form>
+        </section>
+
+        <section id="account" class="view">
+          <div class="section-head"><div><small class="section-context">账户与财务</small><h3 id="accountPageTitle">个人资料</h3><p id="accountPageSubtitle">管理个人资料、登录凭据与账户安全</p></div></div>
+          <section class="panel profile-panel">
+            <div class="profile-hero"><span id="profileInitial">U</span><div><small>ACCOUNT PROFILE</small><h3 id="profileName">user</h3><p id="profileIdentity">客户账户</p></div><aside><small>账户状态</small><strong class="success-text">正常</strong></aside></div>
+            <div class="profile-grid"><div><span>用户名</span><strong id="profileUsername">-</strong></div><div><span>邮箱</span><strong id="profileEmail">-</strong></div><div><span>账号角色</span><strong id="profileRole">-</strong></div><div><span>注册时间</span><strong id="profileCreatedAt">-</strong></div><div><span>当前套餐</span><strong id="profilePlan">-</strong></div></div>
+          </section>
+          <section class="panel customer-only" id="apiKeyPanel"><div class="panel-head"><div><h3>API 密钥</h3><p>用于通过 API 管理账户资源；密钥只在创建时显示一次。</p></div><button id="createApiKey" class="secondary" type="button">＋ 新建密钥</button></div><div class="table-wrap"><table><thead><tr><th>名称</th><th>密钥前缀</th><th>创建时间</th><th>最近使用</th><th>状态</th><th class="right">操作</th></tr></thead><tbody id="apiKeyTable"></tbody></table></div><div id="apiKeyEmpty" class="empty hidden"><span>◇</span><h4>暂无 API 密钥</h4><p>创建后可用于通过 API 管理本账户资源。</p></div></section>
+          <div class="account-settings-grid">
+            <section class="panel security-panel">
+              <div class="panel-head"><div><h3>修改密码</h3><p>修改后所有登录设备都需要重新登录</p></div></div>
+              <form id="passwordForm" class="account-form"><label>当前密码<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>新密码<input name="newPassword" type="password" minlength="10" autocomplete="new-password" required></label><label>确认新密码<input name="confirmPassword" type="password" minlength="10" autocomplete="new-password" required></label><div class="dialog-actions"><button class="primary" type="submit">保存新密码</button></div></form>
+            </section>
+            <section class="panel customer-only" id="emailChangePanel">
+              <div class="panel-head"><div><h3>更换邮箱</h3><p id="emailChangeDescription">验证码将发送到新邮箱</p></div><span id="emailSecurityState" class="badge off">未验证</span></div>
+              <form id="emailChangeForm" class="account-form"><label>新邮箱<div class="email-code-row"><input name="email" type="email" autocomplete="email" required><button id="emailChangeRequest" class="secondary" type="submit">发送验证码</button></div></label><div id="emailChangeTurnstile" class="turnstile-slot" data-turnstile="email-change"></div><label>当前密码<input name="currentPassword" type="password" autocomplete="current-password" required></label><div id="emailChangeVerifyFields" class="hidden"><label>邮箱验证码<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"></label><div class="dialog-actions"><button id="confirmEmailChange" class="primary" type="button">确认更换邮箱</button></div></div></form>
+            </section>
+            <section id="mfaPanel" class="panel account-mfa-panel"><div class="panel-head"><div><h3>动态验证</h3><p>登录时使用验证器动态码或一次性恢复码</p></div><span id="mfaStatus" class="badge off">未启用</span></div><div class="account-action-row"><div><strong>TOTP 动态验证</strong><small id="mfaDescription">支持所有用户和管理员账号</small></div><button id="configureMfaButton" class="primary">配置 MFA</button></div></section>
+          </div>
+          <section class="panel account-wide"><div class="panel-head"><div><h3>登录设备</h3><p>显示最近的有效会话，可单独撤销</p></div><button id="refreshSessions" class="secondary">刷新</button></div><div class="table-wrap"><table><thead><tr><th>设备</th><th>IP</th><th>最近活动</th><th>到期时间</th><th class="right">操作</th></tr></thead><tbody id="sessionTable"></tbody></table></div></section>
+          <section class="panel danger-zone customer-only"><div class="panel-head"><div><h3>注销账号</h3><p>仅在余额为零且没有套餐、网站和 CDN 服务资源时可注销</p></div><span id="accountClosureBadge" class="badge pending">检查中</span></div><div class="danger-zone-body"><ul id="accountClosureStatus"></ul><form id="closeAccountForm" class="account-form"><label>当前密码<input name="currentPassword" type="password" autocomplete="current-password" required></label><label id="closeAccountMfaField" class="hidden">动态验证码或恢复码<input name="mfaCode" autocomplete="one-time-code"></label><label class="consent-row"><input name="confirmed" type="checkbox" required><span>我确认注销后账号将无法登录，历史订单和财务记录仍会保留</span></label><button class="danger-button" type="submit">注销账号</button></form></div></section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="siteDialog">
+    <form id="siteForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">SITE CONFIGURATION</p><h3 id="siteDialogTitle">添加网站</h3></div><button type="button" class="icon-button" data-close="siteDialog" aria-label="关闭">×</button></div>
+      <input type="hidden" name="siteId">
+      <div class="form-grid">
+        <label class="full">加速域名<input name="domain" required placeholder="www.example.com"><small>创建后不可修改</small></label>
+        <label class="full">所属套餐<select name="subscriptionId" required></select></label>
+        <label class="full">转发分组<select name="groupId"><option value="">不分组</option></select><small>用于四层转发分类和筛选。</small></label>
+        <label class="full">源站地址<input name="origin" required placeholder="192.0.2.10 或 origin.example.com"></label>
+        <label>回源协议<select name="backendProtocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label>
+        <label>回源 Host<input name="backendHost" placeholder="默认使用加速域名"></label>
+      </div>
+      <div class="switch-list">
+        <label><span><strong>WebSocket</strong><small>支持长连接与实时通信</small></span><input type="checkbox" name="websocket"></label>
+        <label><span><strong>Gzip 压缩</strong><small>压缩文本资源以降低传输量</small></span><input type="checkbox" name="gzip"></label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="siteDialog">取消</button><button type="submit" class="primary">保存网站</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="planChangeDialog"><form id="planChangeForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">PACKAGE CHANGE</p><h3 id="planChangeTitle">套餐升降配</h3></div><button type="button" class="icon-button" data-close="planChangeDialog" aria-label="关闭">×</button></div><input name="subscriptionId" type="hidden"><label>当前套餐<input name="currentPlan" readonly></label><label>目标套餐<select name="package" required></select></label><div id="planChangeQuote" class="plan-change-quote"><div><span>剩余有效期</span><strong id="planChangeRemainDays">-</strong></div><div><span>当前套餐折算</span><strong id="planChangeCurrentPrice">-</strong></div><div><span>目标套餐折算</span><strong id="planChangeNewPrice">-</strong></div><div><span>补款 / 退款</span><strong id="planChangeDiffPrice">-</strong></div><div class="full"><span>变更后余额</span><strong id="planChangeBalance">-</strong></div></div><p id="planChangeQuoteStatus" class="muted">正在计算差价...</p><div class="dialog-actions"><button type="button" class="secondary" data-close="planChangeDialog">取消</button><button id="planChangeSubmit" type="submit" class="primary" disabled>确认变更</button></div></form></dialog>
+
+  <dialog id="userDialog">
+    <form id="userForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">CUSTOMER ACCOUNT</p><h3>创建客户</h3></div><button type="button" class="icon-button" data-close="userDialog" aria-label="关闭">×</button></div>
+      <label>用户名<input name="username" required placeholder="例如 customer_a" autocomplete="off"></label>
+      <label>邮箱（可选）<input name="email" type="email" placeholder="customer@example.com" autocomplete="off"></label>
+      <label>初始密码<input name="password" type="password" required minlength="10" placeholder="至少 10 个字符" autocomplete="new-password"></label>
+      <p class="notice">新客户创建后余额和套餐均为空，可由客户充值购买，或由管理员单独分配套餐。</p>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="userDialog">取消</button><button type="submit" class="primary">创建客户</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="resetPasswordDialog"><form id="resetPasswordForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">CUSTOMER SECURITY</p><h3 id="resetPasswordTitle">重置客户密码</h3></div><button type="button" class="icon-button" data-close="resetPasswordDialog" aria-label="关闭">×</button></div><input type="hidden" name="userId"><label>新密码<input name="password" type="password" minlength="10" autocomplete="new-password" required></label><p class="notice">保存后会使该客户的全部登录会话失效。</p><div class="dialog-actions"><button type="button" class="secondary" data-close="resetPasswordDialog">取消</button><button type="submit" class="primary">重置密码</button></div></form></dialog>
+
+  <dialog id="adminSiteDialog"><form id="adminSiteForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">CUSTOMER SITE</p><h3>为客户新建站点</h3></div><button type="button" class="icon-button" data-close="adminSiteDialog" aria-label="关闭">×</button></div><label>客户<select name="userId" required></select></label><label>所属套餐<select name="subscriptionId" required></select></label><label>加速域名<input name="domain" required placeholder="www.example.com"></label><label>源站地址<input name="origin" required placeholder="192.0.2.10"></label><div class="form-grid"><label>回源协议<select name="backendProtocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label>回源 Host<input name="backendHost"></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close="adminSiteDialog">取消</button><button type="submit" class="primary">创建站点</button></div></form></dialog>
+  <dialog id="adminStreamDialog" class="wide-dialog"><form id="adminStreamForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">CUSTOMER STREAM</p><h3 id="adminStreamDialogTitle">为客户新建转发</h3></div><button type="button" class="icon-button" data-close="adminStreamDialog" aria-label="关闭">×</button></div><input name="id" type="hidden"><div class="form-grid"><label>客户<select name="userId" required></select></label><label>所属套餐<select name="subscriptionId" required></select></label><label>资源名称<input name="name" required maxlength="120" placeholder="例如 业务入口"></label><label>监听端口<input name="listenPort" type="number" min="1" max="65535" value="8443" required></label><label>协议<select name="protocol"><option value="tcp">TCP</option><option value="udp">UDP</option></select></label><label>负载方式<select name="balanceWay"><option value="rr">轮询</option><option value="ip_hash">源 IP 哈希</option></select></label><label>源站地址<input name="backendAddr" required placeholder="192.0.2.10"></label><label>源站端口<input name="backendPort" type="number" min="1" max="65535" value="443" required></label><label class="switch-inline full"><span>启用转发</span><input name="enabled" type="checkbox" checked></label></div><div id="adminStreamReadonly" class="detail-stack hidden"></div><div class="dialog-actions"><button type="button" class="secondary" data-close="adminStreamDialog">取消</button><button type="submit" class="primary">保存转发</button></div></form></dialog>
+
+  <dialog id="redemptionDialog" class="wide-dialog"><form id="redemptionForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">REDEMPTION CODE</p><h3>生成兑换码</h3></div><button type="button" class="icon-button" data-close="redemptionDialog" aria-label="关闭">×</button></div><div class="form-grid"><label>权益类型<select name="type"><option value="plan">套餐</option><option value="upgrade">增值项</option><option value="traffic">流量包</option></select></label><label>兑换商品<select name="productId" required></select></label><label>生成数量<input name="count" type="number" min="1" max="100" value="1" required></label><label>单码可用次数<input name="maxUses" type="number" min="1" max="100000" value="1" required></label><label>权益数量<input name="amount" type="number" min="1" max="10000" value="1" required></label><label>过期时间<input name="expiresAt" type="datetime-local"></label><label class="full">标签<input name="label" maxlength="100" placeholder="例如 2026 夏季活动"></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close="redemptionDialog">取消</button><button type="submit" class="primary">生成兑换码</button></div></form></dialog>
+
+  <dialog id="generatedCodesDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">ONE-TIME DISPLAY</p><h3 id="generatedCodesTitle">兑换码已生成</h3></div><button type="button" class="icon-button" data-close="generatedCodesDialog" aria-label="关闭">×</button></div><p id="generatedCodesNotice" class="notice">完整兑换码只在本次显示，请妥善分发。后台列表只保留末四位。</p><label id="generatedCodesLabel">兑换码<textarea id="generatedCodes" rows="10" readonly></textarea></label><div class="dialog-actions"><button type="button" id="copyGeneratedCodes" class="secondary">复制</button><button type="button" class="primary" data-close="generatedCodesDialog">完成</button></div></form></dialog>
+
+  <dialog id="rechargeCodeDialog"><form id="rechargeCodeAdminForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">BALANCE RECHARGE</p><h3>生成余额充值码</h3></div><button type="button" class="icon-button" data-close="rechargeCodeDialog" aria-label="关闭">×</button></div><div class="form-grid"><label>面额（元）<input name="amount" type="number" min="0.01" max="1000000" step="0.01" required></label><label>生成数量<input name="count" type="number" min="1" max="100" value="1" required></label><label>单码可用次数<input name="maxUses" type="number" min="1" max="100000" value="1" required></label><label>过期时间<input name="expiresAt" type="datetime-local"></label><label class="full">标签<input name="label" maxlength="100" placeholder="例如 2026 年活动充值"></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close="rechargeCodeDialog">取消</button><button type="submit" class="primary">生成充值码</button></div></form></dialog>
+
+  <dialog id="walletAdjustDialog"><form id="walletAdjustForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">WALLET ADJUSTMENT</p><h3 id="walletAdjustTitle">调整客户余额</h3></div><button type="button" class="icon-button" data-close="walletAdjustDialog" aria-label="关闭">×</button></div><input type="hidden" name="userId"><label>调整金额（元）<input name="amount" type="number" step="0.01" required placeholder="正数增加，负数扣减"></label><label>原因<input name="description" maxlength="240" required placeholder="将写入客户余额流水"></label><p class="notice">余额不能调整为负数，所有调整都会保留审计和资金流水。</p><div class="dialog-actions"><button type="button" class="secondary" data-close="walletAdjustDialog">取消</button><button type="submit" class="primary">确认调整</button></div></form></dialog>
+
+  <dialog id="planDialog" class="wide-dialog"><form id="planForm" method="dialog">
+    <div class="dialog-head"><div><p class="eyebrow">PLAN</p><h3 id="planDialogTitle">新建套餐</h3></div><button type="button" class="icon-button" data-close="planDialog" aria-label="关闭">×</button></div>
+    <input type="hidden" name="id"><div class="form-grid">
+      <label>套餐代码<input name="code" required maxlength="40"></label><label>套餐名称<input name="name" required maxlength="80"></label>
+      <label>价格（元）<input name="price" type="number" min="0" step="0.01" required></label><label>周期（天）<input name="durationDays" type="number" min="1" value="30" required></label>
+      <label>加速域名数<input name="domainLimit" type="number" min="0" placeholder="留空为不限"></label><label>月流量（GiB）<input name="trafficGiB" type="number" min="0" step="0.01" placeholder="留空为不限"></label>
+      <label>HTTP / 转发端口<input name="portLimit" type="number" min="0" placeholder="留空为不限"></label><label>套餐分组<select name="groupId"></select></label>
+      <label class="full">上游套餐<select name="upstreamMapping" required></select></label>
+      <label class="full">说明<input name="description" maxlength="240"></label>
+    </div><div class="switch-list"><label><span><strong>允许购买</strong><small>关闭后仅保留历史套餐数据</small></span><input type="checkbox" name="enabled" checked></label></div>
+    <div class="dialog-actions"><button type="button" class="secondary" data-close="planDialog">取消</button><button type="submit" class="primary">保存套餐</button></div>
+  </form></dialog>
+
+  <dialog id="upstreamDialog" class="wide-dialog"><form id="upstreamForm" method="dialog">
+    <div class="dialog-head"><div><p class="eyebrow">CDNFLY UPSTREAM</p><h3 id="upstreamDialogTitle">添加上游</h3></div><button type="button" class="icon-button" data-close="upstreamDialog" aria-label="关闭">×</button></div>
+    <input type="hidden" name="id"><div class="form-grid"><label>上游名称<input name="name" maxlength="80" autocomplete="off" required></label><label>API 地址<input name="baseUrl" type="url" autocomplete="off" placeholder="https://api.example.com" required></label><label>CNAME 后缀<input name="cnameSuffix" autocomplete="off" placeholder="例如 cdndns.vip"><small>上游仅返回主机名前缀时，用于生成完整 CNAME</small></label><label>API Key<input name="apiKey" autocomplete="off" placeholder="编辑时留空保留"></label><label>API Secret<input name="apiSecret" type="password" autocomplete="new-password" placeholder="编辑时留空保留"></label><label>每分钟请求上限<input name="requestsPerMinute" type="number" min="1" value="300" required></label><label>超时时间（毫秒）<input name="timeoutMs" type="number" min="1000" value="15000" required></label></div>
+    <div class="switch-list"><label><span><strong>启用上游</strong><small>停用前必须先处理其生效客户套餐</small></span><input type="checkbox" name="enabled" checked></label><label><span><strong>设为默认上游</strong><small>用于没有明确资源归属的单上游兼容查询</small></span><input type="checkbox" name="isDefault"></label></div>
+    <div class="dialog-actions"><button type="button" class="secondary" data-close="upstreamDialog">取消</button><button type="submit" class="primary">保存上游</button></div>
+  </form></dialog>
+
+  <dialog id="upstreamPackageDialog"><form id="upstreamPackageForm" method="dialog">
+    <div class="dialog-head"><div><p class="eyebrow">ACCOUNT PACKAGE</p><h3 id="upstreamPackageDialogTitle">添加账号套餐</h3></div><button type="button" class="icon-button" data-close="upstreamPackageDialog" aria-label="关闭">×</button></div>
+    <input type="hidden" name="upstreamId"><input type="hidden" name="id"><label>账号已购套餐<select name="packageId" required><option value="">正在读取...</option></select></label><label>显示名称<input name="name" required maxlength="100"></label><label>说明<input name="description" maxlength="240"></label><div class="switch-list"><label><span><strong>允许平台套餐绑定</strong></span><input type="checkbox" name="enabled" checked></label></div>
+    <div class="dialog-actions"><button type="button" class="secondary" data-close="upstreamPackageDialog">取消</button><button type="submit" class="primary">保存账号套餐</button></div>
+  </form></dialog>
+
+  <dialog id="groupDialog"><form id="groupForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">PACKAGE GROUP</p><h3 id="groupDialogTitle">新建分组</h3></div><button type="button" class="icon-button" data-close="groupDialog" aria-label="关闭">×</button></div><input type="hidden" name="id"><label>名称<input name="name" required></label><label>说明<input name="description"></label><label>排序<input name="sort" type="number" min="0" value="0"></label><div class="switch-list"><label><span><strong>启用分组</strong></span><input type="checkbox" name="enabled" checked></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close="groupDialog">取消</button><button type="submit" class="primary">保存分组</button></div></form></dialog>
+
+  <dialog id="upgradeDialog"><form id="upgradeForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">PLAN UPGRADE</p><h3 id="upgradeDialogTitle">新建增值项</h3></div><button type="button" class="icon-button" data-close="upgradeDialog" aria-label="关闭">×</button></div><input type="hidden" name="id"><label>名称<input name="name" required></label><label>价格（元）<input name="price" type="number" min="0" step="0.01" required></label><div class="form-grid"><label>域名增量<input name="domainIncrement" type="number" min="0" value="0"></label><label>流量增量（GiB）<input name="trafficGiB" type="number" min="0" step="0.01" value="0"></label><label>端口增量<input name="portIncrement" type="number" min="0" value="0"></label></div><label>说明<input name="description"></label><div class="switch-list"><label><span><strong>启用增值项</strong></span><input type="checkbox" name="enabled" checked></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close="upgradeDialog">取消</button><button type="submit" class="primary">保存增值项</button></div></form></dialog>
+
+  <dialog id="trafficDialog"><form id="trafficForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">TRAFFIC PACKAGE</p><h3 id="trafficDialogTitle">新建流量包</h3></div><button type="button" class="icon-button" data-close="trafficDialog" aria-label="关闭">×</button></div><input type="hidden" name="id"><label>名称<input name="name" required></label><div class="form-grid"><label>流量（GiB）<input name="trafficGiB" type="number" min="0.01" step="0.01" required></label><label>价格（元）<input name="price" type="number" min="0" step="0.01" required></label><label>有效期（天）<input name="durationDays" type="number" min="1" value="30" required></label></div><label>说明<input name="description"></label><div class="switch-list"><label><span><strong>启用流量包</strong></span><input type="checkbox" name="enabled" checked></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close="trafficDialog">取消</button><button type="submit" class="primary">保存流量包</button></div></form></dialog>
+
+  <dialog id="subscriptionDialog"><form id="subscriptionForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">SUBSCRIPTION</p><h3>分配客户套餐</h3></div><button type="button" class="icon-button" data-close="subscriptionDialog" aria-label="关闭">×</button></div><label>客户账号<select name="userId" required></select></label><label>套餐<select name="planId" required></select></label><label>开始时间<input name="startsAt" type="datetime-local"></label><label>结束时间<input name="endsAt" type="datetime-local"></label><p class="notice">新套餐会作为独立实例加入该账号，原有套餐继续生效；网站和转发可分别绑定不同套餐。</p><div class="dialog-actions"><button type="button" class="secondary" data-close="subscriptionDialog">取消</button><button type="submit" class="primary">分配套餐</button></div></form></dialog>
+
+  <dialog id="resourceDialog" class="wide-dialog">
+    <form id="resourceForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">SECURITY RESOURCE</p><h3 id="resourceDialogTitle">新建资源</h3></div><button type="button" class="icon-button" data-close="resourceDialog" aria-label="关闭">×</button></div>
+      <input type="hidden" name="resourceId">
+      <div class="resource-form-fields" data-resource-fields="base">
+        <label>名称<input name="name" required maxlength="120"></label>
+        <label>备注<input name="description" maxlength="240"></label>
+        <label class="hidden" data-resource-subscription>所属套餐<select name="resourceSubscriptionId"></select><small>资源将通过所选套餐对应的 CDN 服务创建和同步。</small></label>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="certs">
+        <div class="form-grid"><label>证书类型<select name="certType"><option value="lets">Let's Encrypt</option><option value="zerossl">ZeroSSL</option><option value="buypass">Buypass</option><option value="custom">上传证书</option></select></label><label>DNS API<select name="dnsapi"><option value="">不使用</option></select></label></div>
+        <label data-cert-auto>签发域名<input name="certDomain" placeholder="example.com *.example.com"></label>
+        <label data-cert-auto class="switch-setting"><span><strong>自动续签</strong><small>证书临近到期时由 CDN 服务自动重新签发</small></span><input name="certAutoRenew" type="checkbox" checked></label>
+        <div data-cert-custom class="hidden"><label>证书私钥<textarea name="certKey" rows="7" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></label><label>证书正文<textarea name="certBody" rows="9" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="dnsapis">
+        <label>DNS 服务商<select name="dnsProvider"><option value="CloudFlare">Cloudflare</option><option value="DNSPod.cn">DNSPod.cn</option><option value="DNSPod.com">DNSPod.com</option><option value="GoDaddy.com">GoDaddy</option><option value="Aliyun">阿里云</option><option value="cloudns.net">cloudns.net</option><option value="Name.com">Name.com</option><option value="Namecheap">Namecheap</option><option value="jdcloud.com">京东云</option><option value="DNS.LA">DNS.LA</option><option value="Namesilo.com">Namesilo.com</option><option value="51DNS.COM">51DNS.COM</option><option value="huaweicloud.com">华为云</option></select></label>
+        <div id="dnsCredentialFields" class="form-grid"></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="acls">
+        <div class="form-grid">
+          <label>默认动作<select name="aclDefaultAction"><option value="allow">允许</option><option value="reject">拒绝</option></select></label>
+          <label id="aclRejectField" class="hidden">拒绝码<select name="aclRejectCode"><option value="403">403 拒绝访问</option><option value="302">302 跳转</option></select></label>
+          <label id="aclRedirectField" class="full hidden">跳转 URL<input name="aclRedirectUrl" type="url" maxlength="2048" placeholder="https://www.example.com/denied"></label>
+          <label class="switch-inline full"><span>启用 ACL</span><input name="aclEnabled" type="checkbox" checked></label>
+        </div>
+        <div class="repeater-head"><strong>访问规则</strong><button id="addAclMatcher" type="button" class="secondary">＋ 添加规则</button></div><div id="aclMatchers" class="rule-builder"></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="cc-filters">
+        <label>处置方式<select name="filterType"><option value="req_rate">请求频率限制</option><option value="easy_click_filter">点击验证</option><option value="easy_slide_filter">滑动验证</option><option value="302_challenge">302 挑战</option><option value="browser_verify_auto">浏览器自动验证</option><option value="captcha_filter">验证码</option><option value="delay_jump_filter">延迟跳转</option><option value="rotate_filter">轮转验证</option></select></label>
+        <div class="form-grid"><label>统计窗口（秒）<input name="withinSecond" type="number" min="1" value="60" required></label><label>窗口最大请求数<input name="maxRequest" type="number" min="1" value="100" required></label><label data-rate-only>单 URI 最大请求数<input name="maxRequestPerUri" type="number" min="1" value="20"></label><label class="switch-inline"><span>启用过滤器</span><input name="filterEnabled" type="checkbox" checked></label></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="cc-matchs">
+        <div class="switch-list"><label><span><strong>启用匹配器</strong></span><input name="matcherEnabled" type="checkbox" checked></label></div>
+        <div class="repeater-head"><strong>匹配条件</strong><button id="addMatcherCondition" type="button" class="secondary">＋ 添加条件</button></div><div id="matcherConditions" class="rule-builder"></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="cc-rules">
+        <div class="form-grid"><label>排序<input name="ruleSort" type="number" min="0" value="100"></label><label class="switch-inline"><span>启用规则</span><input name="ruleEnabled" type="checkbox" checked></label></div>
+        <div class="repeater-head"><strong>执行项</strong><button id="addRuleAction" type="button" class="secondary">＋ 添加执行项</button></div><div id="ruleActions" class="rule-builder"></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="waf-rules">
+        <div class="switch-list"><label><span><strong>启用规则库</strong></span><input name="wafLibraryEnabled" type="checkbox" checked></label><label><span><strong>启用远程订阅</strong><small>按周期从可信 URL 同步规则</small></span><input name="wafSubscribeEnabled" type="checkbox" checked></label></div>
+        <div class="form-grid"><label class="full">订阅 URL<input name="wafSubscribeUrl" type="url" placeholder="https://rules.example.com/waf.json"></label><label>同步间隔（分钟）<input name="wafSubscribeInterval" type="number" min="1" value="60"></label></div>
+      </div>
+      <div class="resource-form-fields hidden" data-resource-fields="streams">
+        <label>所属套餐<select name="subscriptionId" required></select></label>
+        <div class="form-grid"><label>转发分组<select name="streamGroup"><option value="">不分组</option></select></label><label>监听端口<input name="streamListenPort" type="number" min="1" max="65535" value="8443" required></label><label>协议<select name="streamProtocol"><option value="tcp">TCP</option><option value="udp">UDP</option></select></label><label>源站地址<input name="streamBackendAddr" required placeholder="192.0.2.10"></label><label>源站端口<input name="streamBackendPort" type="number" min="1" max="65535" value="443" required></label><label>负载方式<select name="streamBalance"><option value="rr">轮询</option><option value="ip_hash">源 IP 哈希</option></select></label><label class="switch-inline"><span>启用转发</span><input name="streamEnabled" type="checkbox" checked></label></div>
+      </div>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="resourceDialog">取消</button><button type="submit" class="primary">保存资源</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="wafDialog">
+    <form id="wafForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">WAF RULE SETTINGS</p><h3 id="wafDialogTitle">WAF 规则配置</h3></div><button type="button" class="icon-button" data-close="wafDialog" aria-label="关闭">×</button></div>
+      <input type="hidden" name="siteId">
+      <div id="wafRuleList" class="check-list"></div>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="wafDialog">取消</button><button type="submit" class="primary">保存配置</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="jobDialog">
+    <form id="jobForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">ASYNC JOB</p><h3>提交异步任务</h3></div><button type="button" class="icon-button" data-close="jobDialog" aria-label="关闭">×</button></div>
+      <label>任务类型<select name="type"><option value="clean_url">刷新 URL</option><option value="clean_dir">刷新目录</option><option value="pre_cache_url">预热 URL</option><option value="unlock_ip">解除封禁 IP</option><option value="clear_white_ip">清除白名单 IP</option><option value="down_http_access_log">下载访问日志</option></select></label>
+      <label>网站<select name="siteId" required></select></label>
+      <label id="jobUrlField">任务 URL<input name="url" type="url" placeholder="https://example.com/path"></label>
+      <label id="jobIpField" class="hidden">IP 地址<input name="ip" inputmode="decimal" placeholder="203.0.113.10"></label>
+      <label>开始时间<input name="start" type="datetime-local"></label>
+      <label>结束时间<input name="end" type="datetime-local"></label>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="jobDialog">取消</button><button type="submit" class="primary">提交任务</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="legalDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">LEGAL</p><h3 id="legalDialogTitle">服务条款</h3></div><button type="button" class="icon-button" data-close="legalDialog" aria-label="关闭">×</button></div><div id="legalDialogBody" class="legal-content"></div><div class="dialog-actions"><button type="button" class="primary" data-close="legalDialog">关闭</button></div></form></dialog>
+
+  <dialog id="announcementDialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">SERVICE ANNOUNCEMENT</p><h3 id="announcementDialogTitle">服务公告</h3></div><button type="button" class="icon-button" data-close="announcementDialog" aria-label="关闭">×</button></div><div id="announcementDialogBody" class="announcement-dialog-body"></div><div class="dialog-actions"><button id="dismissAnnouncement" type="button" class="primary">我知道了</button></div></form></dialog>
+
+  <dialog id="confirmDialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">CONFIRM ACTION</p><h3 id="confirmDialogTitle">确认操作</h3></div><button type="button" class="icon-button" data-confirm-value="false" aria-label="关闭">×</button></div><div id="confirmDialogBody" class="confirm-summary"></div><div class="dialog-actions"><button type="button" class="secondary" data-confirm-value="false">取消</button><button id="confirmDialogAccept" type="button" class="primary" data-confirm-value="true">确认</button></div></form></dialog>
+
+  <dialog id="mfaDialog" class="wide-dialog"><form id="mfaForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">MULTI-FACTOR AUTHENTICATION</p><h3 id="mfaDialogTitle">配置动态验证</h3></div><button type="button" class="icon-button" data-close="mfaDialog" aria-label="关闭">×</button></div><div id="mfaSetupFields"><label>当前密码<input name="currentPassword" type="password" autocomplete="current-password"></label><p class="notice">绑定后登录需要验证器动态码。恢复码只显示一次，请妥善保存。</p></div><div id="mfaConfirmFields" class="hidden"><label>验证器密钥<input name="secret" readonly></label><label>动态验证码<input name="code" inputmode="numeric" maxlength="20" autocomplete="one-time-code"></label><label>恢复码<textarea name="recoveryCodes" rows="5" readonly></textarea></label></div><div id="mfaDisableFields" class="hidden"><label>当前密码<input name="disablePassword" type="password" autocomplete="current-password"></label><label>动态验证码或恢复码<input name="disableCode" autocomplete="one-time-code"></label><p class="notice">解绑后，下次登录将不再要求动态验证。</p></div><div class="dialog-actions"><button type="button" class="secondary" data-close="mfaDialog">取消</button><button id="mfaSubmitButton" type="submit" class="primary">生成密钥</button></div></form></dialog>
+
+  <dialog id="administratorDialog"><form id="administratorForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">ADMINISTRATOR</p><h3 id="administratorDialogTitle">添加管理员</h3></div><button type="button" class="icon-button" data-close="administratorDialog" aria-label="关闭">×</button></div><input name="id" type="hidden"><label>用户名<input name="username" required autocomplete="off"></label><label>邮箱<input name="email" type="email" autocomplete="off"></label><label>密码<input name="password" type="password" minlength="10" autocomplete="new-password" placeholder="编辑时留空表示不修改"></label><label>管理员级别<select name="adminRole"><option value="admin">管理员</option><option value="super_admin">超级管理员</option></select></label><label id="administratorStatusField" class="switch-setting hidden"><span><strong>允许登录</strong></span><input name="status" type="checkbox" checked></label><div class="dialog-actions"><button type="button" class="secondary" data-close="administratorDialog">取消</button><button type="submit" class="primary">保存管理员</button></div></form></dialog>
+
+  <dialog id="customerDetailDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">CUSTOMER DETAIL</p><h3 id="customerDetailTitle">客户详情</h3></div><button type="button" class="icon-button" data-close="customerDetailDialog" aria-label="关闭">×</button></div><div id="customerDetailBody" class="detail-stack"></div><div class="dialog-actions"><button type="button" class="primary" data-close="customerDetailDialog">关闭</button></div></form></dialog>
+  <dialog id="apiKeyDialog"><form id="apiKeyForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">API KEY</p><h3>新建 API 密钥</h3></div><button type="button" class="icon-button" data-close="apiKeyDialog" aria-label="关闭">×</button></div><label>密钥名称<input name="name" maxlength="80" value="自动化调用" required autofocus></label><p class="notice">密钥只在创建成功后显示一次。</p><div class="dialog-actions"><button type="button" class="secondary" data-close="apiKeyDialog">取消</button><button type="submit" class="primary">创建密钥</button></div></form></dialog>
+  <dialog id="orderDetailDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">ORDER DETAIL</p><h3 id="orderDetailTitle">订单详情</h3></div><button type="button" class="icon-button" data-close="orderDetailDialog" aria-label="关闭">×</button></div><div id="orderDetailBody" class="detail-stack"></div><div class="dialog-actions"><button type="button" class="secondary" data-close="orderDetailDialog">关闭</button><button id="refundOrderButton" type="button" class="danger-button hidden">全额退款</button></div></form></dialog>
+  <dialog id="recordDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">RECORDS</p><h3 id="recordDialogTitle">记录</h3></div><button type="button" class="icon-button" data-close="recordDialog" aria-label="关闭">×</button></div><div id="recordDialogBody" class="record-list"></div><div class="dialog-actions"><button type="button" class="primary" data-close="recordDialog">关闭</button></div></form></dialog>
+  <dialog id="inviteDialog"><form id="inviteForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">REGISTRATION INVITE</p><h3>生成邀请码</h3></div><button type="button" class="icon-button" data-close="inviteDialog" aria-label="关闭">×</button></div><label>生成数量<input name="count" type="number" min="1" max="100" value="1" required></label><label>单码可用次数<input name="maxUses" type="number" min="1" max="100000" value="1" required></label><label>过期时间<input name="expiresAt" type="datetime-local"></label><label>标签<input name="label" maxlength="120"></label><div class="dialog-actions"><button type="button" class="secondary" data-close="inviteDialog">取消</button><button type="submit" class="primary">生成邀请码</button></div></form></dialog>
+
+      <script type="module" src="/app.js?v=arenode"></script>
+</body>
+</html>

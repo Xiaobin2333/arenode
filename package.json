@@ -1,0 +1,33 @@
+{
+  "name": "arenode",
+  "version": "1.0.0",
+  "description": "Multi-tenant CDN resource management and reseller console for CDNFly v6",
+  "private": true,
+  "license": "MIT",
+  "keywords": [
+    "cdn",
+    "cdnfly",
+    "reseller",
+    "multi-tenant",
+    "edge"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "reconcile:customer-groups": "node --env-file-if-exists=.env src/reconcile-customer-groups.js",
+    "test": "node --test",
+    "test:real": "RUN_REAL_CDNFLY_TESTS=1 node --test test/real-upstream-smoke.test.js"
+  },
+  "dependencies": {
+    "nodemailer": "^9.0.5",
+    "pg": "^8.16.3",
+    "redis": "^5.8.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
