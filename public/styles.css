@@ -22,6 +22,8 @@ button, input, select { font: inherit; letter-spacing: 0; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .58; box-shadow: none; }
 .hidden { display: none !important; }
+.boot-splash { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; color: #9db2b5; background: #14282c; font-size: 13px; letter-spacing: .08em; }
+.boot-splash.hidden { display: none !important; }
 .eyebrow { margin: 0 0 8px; color: #72818a; font-size: 11px; font-weight: 800; letter-spacing: 1.6px; }
 .muted { color: var(--muted); }
 .brand-mark { position: relative; width: 58px; height: 58px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.25); transform: rotate(45deg); }
@@ -104,7 +106,8 @@ td strong { display: block; color: #263740; } td small { color: var(--muted); }
 .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; white-space: nowrap; font-size: 11px; font-weight: 750; }
 .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .badge.active { color: #13745f; background: #e7f4ef; }.badge.off { color: #777f84; background: #edf0f1; }.badge.pending { color: #946113; background: #faf0dc; }
-.row-actions { display: inline-flex; gap: 6px; }.row-actions button { min-height: 30px; padding: 0 9px; color: #53636b; border: 1px solid var(--line); border-radius: 4px; background: white; font-size: 12px; }.row-actions button.danger { color: var(--danger); }
+.row-actions { display: inline-flex; gap: 6px; align-items: center; }.row-actions button { min-height: 30px; padding: 0 9px; color: #53636b; border: 1px solid var(--line); border-radius: 4px; background: white; font-size: 12px; }.row-actions button.danger { color: var(--danger); }
+.qty-input { width: 64px; min-height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; background: white; color: #22324c; font-size: 12px; }
 .resource-tabs { display: flex; gap: 5px; margin-bottom: 14px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: thin; }
 .resource-tabs button { flex: 0 0 auto; min-height: 38px; padding: 0 14px; color: #617078; border: 1px solid var(--line); border-radius: 4px; background: white; font-size: 12px; font-weight: 700; }
 .resource-tabs button.active { color: white; border-color: var(--accent); background: var(--accent); }

@@ -199,7 +199,7 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
 
   async function adminHealthStatus({ fresh = false } = {}) {
     const snapshotAge = adminHealthSnapshot ? Date.now() - adminHealthSnapshot.createdAt : Infinity;
-    if (!fresh && snapshotAge < 5_000) return adminHealthSnapshot.value;
+    if (!fresh && snapshotAge < 30_000) return adminHealthSnapshot.value;
     if (adminHealthInFlight) return adminHealthInFlight;
     adminHealthInFlight = (async () => {
       const probe = async callback => {

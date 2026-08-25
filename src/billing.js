@@ -31,12 +31,59 @@ function domainCount(value) {
   return String(value || '').split(/[\s,]+/).filter(Boolean).length;
 }
 
+function purchaseMode(plan) {
+  return plan?.purchase_mode === 'once' ? 'once' : 'stack';
+}
+
+function maxPurchaseQty(plan) {
+  const parsed = Number.parseInt(plan?.max_purchase_qty, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function renewalMode(plan) {
+  return plan?.renewal_mode === 'off' || plan?.renewal_mode === 'window' ? plan.renewal_mode : 'anytime';
+}
+
+function renewalWindowDays(plan) {
+  const parsed = Number.parseInt(plan?.renewal_window_days, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 7;
+}
+
+function assertRenewalAllowed(plan, subscription, now = new Date()) {
+  const mode = renewalMode(plan);
+  if (mode === 'off') throw Object.assign(new Error('该套餐禁止续费'), { status: 409 });
+  if (mode === 'window' && subscription?.ends_at) {
+    const ends = new Date(subscription.ends_at);
+    const windowDays = renewalWindowDays(plan);
+    if (Number.isFinite(ends.getTime()) && ends.getTime() - now.getTime() > windowDays * 86400_000) {
+      throw Object.assign(new Error(`该套餐仅可在到期前 ${windowDays} 天内续费`), { status: 409 });
+    }
+  }
+}
+
+function stackBaseDate(subscription, now = new Date()) {
+  if (!subscription?.ends_at) return now;
+  const ends = new Date(subscription.ends_at);
+  return Number.isFinite(ends.getTime()) && ends > now ? ends : now;
+}
+
+async function livePlanSubscription(db, userId, planId, { forUpdate = false } = {}) {
+  const now = new Date().toISOString();
+  const lock = forUpdate ? ' FOR UPDATE' : '';
+  return await db.prepare(`SELECT * FROM subscriptions
+    WHERE user_id=? AND plan_id=? AND status IN ('active', 'suspended', 'pending')
+      AND (ends_at > ? OR (grace_ends_at IS NOT NULL AND grace_ends_at > ?))
+    ORDER BY ends_at DESC, id DESC LIMIT 1${lock}`).get(userId, planId, now, now) || null;
+}
+
 function planPublic(row) {
   if (!row) return null;
   return {
     id: row.id, groupId: row.group_id, code: row.code, name: row.name, description: row.description,
     priceCents: row.price_cents, durationDays: row.duration_days, domainLimit: row.domain_limit,
     trafficLimitBytes: row.traffic_limit_bytes, portLimit: row.port_limit, enabled: Boolean(row.enabled), sort: row.sort,
+    purchaseMode: purchaseMode(row), maxPurchaseQty: maxPurchaseQty(row),
+    renewalMode: renewalMode(row), renewalWindowDays: renewalWindowDays(row),
     upstreamId: row.upstream_id ? Number(row.upstream_id) : null, upstreamPackageId: row.upstream_package_id || null,
   };
 }
@@ -55,6 +102,8 @@ export async function seedBilling(db) {
     const id = (await db.prepare(`INSERT INTO package_groups (name, description, sort, enabled) VALUES ('套餐资源', 'CDN 加速套餐', 10, 1)`).run()).lastInsertRowid;
     group = await db.prepare('SELECT * FROM package_groups WHERE id = ?').get(id);
   }
+  const existing = Number((await db.prepare('SELECT COUNT(*) AS count FROM plans').get()).count);
+  if (existing) return;
   const insert = db.prepare(`INSERT OR IGNORE INTO plans
     (group_id, code, name, price_cents, duration_days, domain_limit, traffic_limit_bytes, port_limit, enabled, sort)
     VALUES (?, ?, ?, ?, 30, ?, ?, ?, 1, ?)`);
@@ -103,9 +152,24 @@ export class BillingService {
     const plan = await this.db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(planId));
     if (!plan) throw Object.assign(new Error('套餐不存在'), { status: 404 });
     if (!['active', 'suspended'].includes(status)) throw new Error('套餐状态无效');
-    const start = new Date(startsAt); const end = endsAt ? new Date(endsAt) : addDays(start, plan.duration_days);
-    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) throw new Error('套餐有效期无效');
+    const start = new Date(startsAt);
+    if (!Number.isFinite(start.getTime())) throw new Error('套餐有效期无效');
     if (this.upstreams && (!plan.upstream_id || !plan.upstream_package_id)) throw Object.assign(new Error('套餐未绑定可用的上游套餐'), { status: 409 });
+    const owned = await livePlanSubscription(this.db, userId, plan.id);
+    const mode = purchaseMode(plan);
+    if (owned) {
+      if (mode === 'once') throw Object.assign(new Error('该套餐每位客户只能持有一份'), { status: 409 });
+      assertRenewalAllowed(plan, owned);
+      const now = new Date();
+      const end = endsAt ? new Date(endsAt) : addDays(stackBaseDate(owned, now), plan.duration_days);
+      if (!Number.isFinite(end.getTime()) || end <= now) throw new Error('套餐有效期无效');
+      await this.db.prepare(`UPDATE subscriptions SET status=?, ends_at=?, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+        .run(status, end.toISOString(), owned.id);
+      await this.updateLegacySiteLimit(userId);
+      return Number(owned.id);
+    }
+    const end = endsAt ? new Date(endsAt) : addDays(start, plan.duration_days);
+    if (!Number.isFinite(end.getTime()) || end <= start) throw new Error('套餐有效期无效');
     const id = (await this.db.prepare(`INSERT INTO subscriptions
       (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(userId, plan.id, status, start.toISOString(), end.toISOString(), plan.upstream_id, plan.upstream_package_id)).lastInsertRowid;
@@ -119,7 +183,8 @@ export class BillingService {
       WHERE user_id = ? AND status IN ('active', 'suspended')
         AND ((auto_renew=0 AND grace_ends_at IS NULL AND ends_at<=?) OR (grace_ends_at IS NOT NULL AND grace_ends_at<=?))`).run(userId, now, now);
     return this.db.prepare(`SELECT s.*, p.group_id, p.code, p.name AS plan_name, p.description AS plan_description,
-      p.price_cents, p.duration_days, p.domain_limit, p.traffic_limit_bytes, p.port_limit, p.enabled AS plan_enabled
+      p.price_cents, p.duration_days, p.domain_limit, p.traffic_limit_bytes, p.port_limit, p.enabled AS plan_enabled,
+      p.purchase_mode, p.max_purchase_qty, p.renewal_mode, p.renewal_window_days
       FROM subscriptions s JOIN plans p ON p.id = s.plan_id
       WHERE s.user_id = ? AND s.status IN ('active', 'suspended') AND s.starts_at <= ?
         AND (s.ends_at > ? OR (s.grace_ends_at IS NOT NULL AND s.grace_ends_at > ?))
@@ -378,10 +443,12 @@ export class BillingService {
     const now = new Date();
     await this.db.transaction(async transaction => {
       const subscription = await transaction.prepare(`SELECT s.*, p.name AS plan_name, p.price_cents, p.duration_days,
-        p.domain_limit, p.traffic_limit_bytes, p.port_limit, p.enabled AS plan_enabled
+        p.domain_limit, p.traffic_limit_bytes, p.port_limit, p.enabled AS plan_enabled,
+        p.renewal_mode, p.renewal_window_days
         FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=? FOR UPDATE`).get(Number(subscriptionId));
       if (!subscription || ['cancelled', 'pending'].includes(subscription.status)) throw Object.assign(new Error('客户套餐不存在或不能续费'), { status: 404 });
       if (!Number(subscription.plan_enabled)) throw Object.assign(new Error('套餐已停止续费'), { status: 409 });
+      assertRenewalAllowed(subscription, subscription, now);
       if (automatic && new Date(subscription.ends_at) > now && !subscription.grace_ends_at) {
         const latest = await transaction.prepare("SELECT id FROM orders WHERE subscription_id=? AND type='renewal' AND status='paid' ORDER BY id DESC LIMIT 1").get(subscription.id);
         result = { renewed: true, idempotent: true, orderId: latest?.id || null, subscriptionId: subscription.id,
@@ -426,14 +493,15 @@ export class BillingService {
   async processLifecycle() {
     const now = new Date();
     if (this.settingsProvider) this.renewalGraceDays = Number((await this.settingsProvider()).renewalGraceDays ?? this.renewalGraceDays);
-    const subscriptions = await this.db.prepare(`SELECT s.*, p.name AS plan_name, p.price_cents, p.enabled AS plan_enabled
+    const subscriptions = await this.db.prepare(`SELECT s.*, p.name AS plan_name, p.price_cents, p.enabled AS plan_enabled,
+      p.renewal_mode, p.renewal_window_days
       FROM subscriptions s JOIN plans p ON p.id=s.plan_id JOIN users u ON u.id=s.user_id
       WHERE s.status IN ('active','suspended') AND u.status='active' ORDER BY s.id`).all();
     const results = [];
     for (const subscription of subscriptions) {
       const endsAt = new Date(subscription.ends_at);
       if (endsAt > now) continue;
-      if (subscription.auto_renew && subscription.plan_enabled) {
+      if (subscription.auto_renew && subscription.plan_enabled && renewalMode(subscription) !== 'off') {
         const renewed = await this.renewSubscription(subscription.id, { automatic: true });
         results.push(renewed);
         if (renewed.renewed) continue;
@@ -498,4 +566,4 @@ export class BillingService {
   }
 }
 
-export const billingInternals = { DEFAULT_PLANS, periodKey, monthRange, domainCount, planPublic };
+export const billingInternals = { DEFAULT_PLANS, periodKey, monthRange, domainCount, planPublic, purchaseMode, maxPurchaseQty, renewalMode, renewalWindowDays, assertRenewalAllowed, stackBaseDate, livePlanSubscription, addDays };

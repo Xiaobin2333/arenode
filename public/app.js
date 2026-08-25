@@ -3,7 +3,7 @@ import { collectMonitorPoints, formatMonitorBandwidth, formatMonitorChartLabel, 
 
 const DEFAULT_SSL_CIPHERS = 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
 
-const state = { me: null, authConfig: null, runtimeSettings: null, capabilities: { wafRules: true, attackLogs: true }, wallet: { balanceCents: 0, availableBalanceCents: 0, totalRechargeCents: 0, totalSpentCents: 0, transactions: [] }, sites: [], siteGroups: [], currentSite: null, currentSiteConfig: null, siteCertificates: [], siteAcls: [], siteCcRules: [], siteCnameChecks: new Map(), streams: [], streamItems: [], streamGroups: [], currentStream: null, userConfigs: [], configType: 'site', logKind: 'op', localLogs: [], auditLogs: [], monitorItems: [], monitorPoints: [], monitorContext: 'site', monitorMode: 'basic', monitorRequestId: 0, jobItems: [], users: [], adminSites: [], adminStreams: [], adminStreamCustomers: [], currentAdminStream: null, upstreams: [], resources: [], editingResource: null, billingPlans: [], billingOrders: [], billingUpgrades: [], billingTraffic: [], redemptions: [], billingAdmin: {}, adminOverview: null, administrators: [], registrationInvites: [], mfa: null, accountClosure: null, apiKeys: [], currentOrder: null, planChangeQuote: null, planChangeRequest: null, trafficPoints: [], streamCount: 0, jobCount: null, resourceKind: 'site-groups', editResourceKind: 'site-groups', resourceFilter: 'all', dataTab: 'streams', streamKind: 'streams', billingTarget: 'current', accountSection: 'profile', currentSiteSection: 'siteBasic', currentView: 'overview', selectedSites: new Set(), selectedResources: new Set(), selectedStreams: new Set(), ccMatchers: [], ccFilters: [], dnsApis: [], dnsAuthKeys: [], pageInfo: {} };
+const state = { me: null, authConfig: null, runtimeSettings: null, capabilities: { wafRules: true, attackLogs: true }, serviceStatus: null, wallet: { balanceCents: 0, availableBalanceCents: 0, totalRechargeCents: 0, totalSpentCents: 0, transactions: [] }, sites: [], siteGroups: [], currentSite: null, currentSiteConfig: null, siteCertificates: [], siteAcls: [], siteCcRules: [], siteCnameChecks: new Map(), streams: [], streamItems: [], streamGroups: [], currentStream: null, userConfigs: [], configType: 'site', logKind: 'op', localLogs: [], auditLogs: [], monitorItems: [], monitorPoints: [], monitorContext: 'site', monitorMode: 'basic', monitorRequestId: 0, jobItems: [], users: [], adminSites: [], adminStreams: [], adminStreamCustomers: [], currentAdminStream: null, upstreams: [], resources: [], editingResource: null, billingPlans: [], billingOrders: [], billingUpgrades: [], billingTraffic: [], redemptions: [], billingAdmin: {}, adminOverview: null, administrators: [], registrationInvites: [], mfa: null, accountClosure: null, apiKeys: [], currentOrder: null, planChangeQuote: null, planChangeRequest: null, trafficPoints: [], streamCount: 0, jobCount: null, resourceKind: 'site-groups', editResourceKind: 'site-groups', resourceFilter: 'all', dataTab: 'streams', streamKind: 'streams', billingTarget: 'current', accountSection: 'profile', currentSiteSection: 'siteBasic', currentView: 'overview', selectedSites: new Set(), selectedResources: new Set(), selectedStreams: new Set(), ccMatchers: [], ccFilters: [], dnsApis: [], dnsAuthKeys: [], pageInfo: {} };
 let serviceStatusTimer = null;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -293,6 +293,10 @@ function formatBytes(value) {
   return `${(bytes / GIB).toLocaleString('zh-CN', { maximumFractionDigits: 2 })} GiB`;
 }
 const formatLimit = value => value === null || value === undefined ? '不限' : Number(value).toLocaleString('zh-CN');
+function remainingDays(item) {
+  const ends = new Date(item?.subscription?.endsAt || item?.endsAt || item?.ends_at || 0);
+  return Number.isFinite(ends.getTime()) ? (ends.getTime() - Date.now()) / 86400_000 : 0;
+}
 const financeTypeLabels = {
   'recharge-code': '充值码入账', 'admin-adjustment': '管理员余额调整', order: '订单支付',
   'order-refund': '订单退款', recharge: '余额充值', refund: '退款', redemption: '权益兑换',
@@ -478,24 +482,54 @@ async function loadOverviewData() {
       for (const selector of ['#chartEmpty', '#dataOverviewEmpty']) $(selector).textContent = '流量趋势暂时无法加载';
     });
   } else state.trafficPoints = [];
-  await Promise.all([orders, monitor, loadServiceStatus()]);
+  await Promise.all([orders, monitor]);
+  loadServiceStatus().catch(() => {});
   const updated = `更新于 ${new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date())}`;
   $('#trafficChartUpdated').textContent = updated; $('#dataOverviewUpdated').textContent = updated;
   renderOverview(); drawTrafficCharts();
 }
 
-async function loadServiceStatus() {
+function paintServiceStatus(status, { unknown = false } = {}) {
   const top = $('#apiStatus'); const overview = $('#welcomeServiceStatus');
+  if (!top) return;
+  if (unknown) {
+    top.className = 'pending'; top.innerHTML = '<i></i>状态未知';
+    if (overview) { overview.textContent = '状态未知'; overview.className = ''; }
+    return;
+  }
+  const healthy = status === 'healthy'; const degraded = status === 'degraded';
+  const checking = status === 'checking';
+  top.className = checking ? 'pending' : healthy ? 'healthy' : degraded ? 'warning' : 'error';
+  top.innerHTML = `<i></i>${checking ? '检测中' : healthy ? '正常' : degraded ? '部分降级' : '部分异常'}`;
+  if (overview) {
+    overview.textContent = checking ? '检测中' : healthy ? '服务正常' : degraded ? '部分降级' : '部分异常';
+    overview.className = checking ? '' : healthy ? 'success-text' : degraded ? 'warning-text' : 'danger-text';
+  }
+}
+
+function recalledServiceStatus() {
+  if (state.serviceStatus) return state.serviceStatus;
+  try { return sessionStorage.getItem('arenode-service-status') || null; } catch { return null; }
+}
+
+function rememberServiceStatus(status) {
+  state.serviceStatus = status;
+  try { sessionStorage.setItem('arenode-service-status', status); } catch {}
+}
+
+async function loadServiceStatus() {
+  const top = $('#apiStatus');
   if (!top || !state.me) return;
-  top.className = 'pending'; top.innerHTML = '<i></i>检测中'; overview.textContent = '检测中';
+  const last = recalledServiceStatus();
+  if (last) paintServiceStatus(last);
+  else paintServiceStatus('checking');
   try {
     const endpoint = state.me.user.role === 'admin' ? '/api/admin/health' : '/api/service-status';
     const result = await api(endpoint); const status = result.status || (result.ok ? 'healthy' : 'unhealthy');
-    const healthy = status === 'healthy'; const degraded = status === 'degraded';
-    top.className = healthy ? 'healthy' : degraded ? 'warning' : 'error'; top.innerHTML = `<i></i>${healthy ? '正常' : degraded ? '部分降级' : '部分异常'}`;
-    overview.textContent = healthy ? '服务正常' : degraded ? '部分降级' : '部分异常'; overview.className = healthy ? 'success-text' : degraded ? 'warning-text' : 'danger-text';
+    rememberServiceStatus(status);
+    paintServiceStatus(status);
   } catch {
-    top.className = 'pending'; top.innerHTML = '<i></i>状态未知'; overview.textContent = '状态未知'; overview.className = '';
+    if (!recalledServiceStatus()) paintServiceStatus(null, { unknown: true });
   }
   if (!serviceStatusTimer) serviceStatusTimer = setInterval(() => { if (state.me) loadServiceStatus().catch(() => {}); }, 30_000);
 }
@@ -982,14 +1016,17 @@ function renderTenantBilling() {
 
   $('#subscriptionCards').replaceChildren(...subscriptions.map(item => {
     const card = document.createElement('article'); card.className = 'subscription-card';
-    card.innerHTML = `<header><div><h4></h4><small></small></div>${statusBadge(item.subscription.status)}</header><dl><dt>有效期</dt><dd></dd><dt>绑定资源</dt><dd></dd><dt>加速域名</dt><dd></dd><dt>月流量</dt><dd></dd><dt>HTTP / 转发端口</dt><dd></dd></dl><footer><label class="auto-renew-toggle"><input type="checkbox" data-auto-renew="${item.subscription.id}"><span>自动续费</span></label><div class="subscription-actions"><button class="secondary" data-change-subscription="${item.subscription.id}">升降配</button><button class="secondary" data-renew-subscription="${item.subscription.id}">立即续费</button></div></footer>`;
+    const renewOff = item.plan?.renewalMode === 'off';
+    const windowBlocked = item.plan?.renewalMode === 'window' && remainingDays(item) > Number(item.plan.renewalWindowDays || 7);
+    card.innerHTML = `<header><div><h4></h4><small></small></div>${statusBadge(item.subscription.status)}</header><dl><dt>有效期</dt><dd></dd><dt>绑定资源</dt><dd></dd><dt>加速域名</dt><dd></dd><dt>月流量</dt><dd></dd><dt>HTTP / 转发端口</dt><dd></dd></dl><footer>${renewOff ? '<span class="status-text">该套餐禁止续费</span>' : `<label class="auto-renew-toggle"><input type="checkbox" data-auto-renew="${item.subscription.id}"><span>自动续费</span></label>`}<div class="subscription-actions"><button class="secondary" data-change-subscription="${item.subscription.id}">升降配</button>${renewOff || windowBlocked ? '' : `<button class="secondary" data-renew-subscription="${item.subscription.id}">立即续费</button>`}</div></footer>`;
     $('h4', card).textContent = item.plan.name; $('header small', card).textContent = `套餐实例 #${item.subscription.id}`;
     const values = $$('dd', card); values[0].textContent = `${formatDate(item.subscription.startsAt)} 至 ${formatDate(item.subscription.endsAt)}`;
     values[1].textContent = `${item.resources.sites} 个网站 / ${item.resources.streams} 个转发`;
     values[2].textContent = `${formatLimit(item.usage.domains)} / ${formatLimit(item.limits.domains)}`;
     values[3].textContent = `${formatBytes(item.usage.trafficBytes)} / ${formatBytes(item.limits.trafficBytes)}`;
     values[4].textContent = `${formatLimit(item.usage.ports)} / ${formatLimit(item.limits.ports)}`;
-    $('[data-auto-renew]', card).checked = Boolean(item.subscription.autoRenew);
+    const autoRenew = $('[data-auto-renew]', card);
+    if (autoRenew) autoRenew.checked = Boolean(item.subscription.autoRenew);
     return card;
   }));
   if (!subscriptions.length) {
@@ -1010,10 +1047,21 @@ function renderTenantBilling() {
     return tr;
   }));
 
+  const ownedByPlan = new Map((subscriptions || []).map(item => [Number(item.plan?.id), item]));
   $('#planCatalogTable').replaceChildren(...state.billingPlans.map(plan => {
+    const owned = ownedByPlan.get(Number(plan.id));
+    const onceOwned = plan.purchaseMode === 'once' && owned;
+    const renewalBlocked = owned && (plan.renewalMode === 'off' || (plan.renewalMode === 'window' && remainingDays(owned) > Number(plan.renewalWindowDays || 7)));
+    const maxQty = Math.max(1, Number(plan.maxPurchaseQty || 1));
+    const qtyControl = onceOwned || renewalBlocked || maxQty <= 1 ? '' : `<input class="qty-input" type="number" min="1" max="${maxQty}" value="1" data-plan-qty="${plan.id}" aria-label="购买数量">`;
+    const action = onceOwned
+      ? '<span class="status-text">已持有</span>'
+      : renewalBlocked
+        ? `<span class="status-text">${plan.renewalMode === 'off' ? '禁止续费' : `到期前 ${plan.renewalWindowDays} 天可续`}</span>`
+        : `${qtyControl}<button class="primary" data-buy-plan="${plan.id}">${owned ? '叠加时长' : '购买'}</button>`;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><strong></strong><small></small></td><td></td><td></td><td></td><td></td><td class="right"><button class="primary" data-buy-plan="${plan.id}">购买</button></td>`;
-    $('strong', tr).textContent = plan.name; $('small', tr).textContent = plan.description || plan.code;
+    tr.innerHTML = `<td><strong></strong><small></small></td><td></td><td></td><td></td><td></td><td class="right"><span class="row-actions">${action}</span></td>`;
+    $('strong', tr).textContent = plan.name; $('small', tr).textContent = `${plan.description || plan.code} · ${plan.purchaseMode === 'once' ? '限购一次' : '重复购买叠加时长'}`;
     tr.children[1].textContent = `${formatMoney(plan.priceCents)} / ${plan.durationDays} 天`;
     tr.children[2].textContent = formatLimit(plan.domainLimit); tr.children[3].textContent = formatBytes(plan.trafficLimitBytes); tr.children[4].textContent = formatLimit(plan.portLimit);
     return tr;
@@ -1111,19 +1159,19 @@ function renderAdminBilling() {
   $('#adminUsageSubscriptions').textContent = totals?.subscriptions.active ?? data.subscriptions.filter(item => item.status === 'active').length;
   $('#adminUsageOverLimit').textContent = totals?.overLimitCustomers ?? data.usage.filter(item => item.billing?.overLimit).length;
   $('#adminPlanTable').replaceChildren(...data.plans.map(plan => {
-    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong><small></small></td><td><strong></strong><small></small></td><td></td><td></td><td></td><td></td><td>${resourceStatus(plan)}</td><td class="right"><span class="row-actions"><button data-edit-plan="${plan.id}">配置</button><button class="danger" data-disable-plan="${plan.id}">停用</button></span></td>`;
-    $('td:first-child strong', tr).textContent = plan.name; $('td:first-child small', tr).textContent = plan.code; $('td:nth-child(2) strong', tr).textContent = plan.upstreamName || '未绑定'; $('td:nth-child(2) small', tr).textContent = plan.upstreamPackageName || plan.upstreamPackageId || '-'; tr.children[2].textContent = formatMoney(plan.priceCents); tr.children[3].textContent = formatLimit(plan.domainLimit); tr.children[4].textContent = formatBytes(plan.trafficLimitBytes); tr.children[5].textContent = formatLimit(plan.portLimit); return tr;
+    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong><small></small></td><td><strong></strong><small></small></td><td></td><td></td><td></td><td></td><td>${resourceStatus(plan)}</td><td class="right"><span class="row-actions"><button data-edit-plan="${plan.id}">配置</button>${catalogToggleButton('plan', plan)}<button class="danger" data-delete-plan="${plan.id}">删除</button></span></td>`;
+    $('td:first-child strong', tr).textContent = plan.name; $('td:first-child small', tr).textContent = `${plan.code} · ${plan.purchaseMode === 'once' ? '仅一次' : '可叠加'} · ${plan.renewalMode === 'off' ? '禁续费' : plan.renewalMode === 'window' ? `到期前${plan.renewalWindowDays}天续` : '可续费'}`; $('td:nth-child(2) strong', tr).textContent = plan.upstreamName || '未绑定'; $('td:nth-child(2) small', tr).textContent = plan.upstreamPackageName || plan.upstreamPackageId || '-'; tr.children[2].textContent = formatMoney(plan.priceCents); tr.children[3].textContent = formatLimit(plan.domainLimit); tr.children[4].textContent = formatBytes(plan.trafficLimitBytes); tr.children[5].textContent = formatLimit(plan.portLimit); return tr;
   }));
   $('#adminGroupTable').replaceChildren(...data.groups.map(group => {
-    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong></td><td></td><td></td><td>${resourceStatus(group)}</td><td class="right"><span class="row-actions"><button data-edit-group="${group.id}">配置</button><button class="danger" data-disable-group="${group.id}">停用</button></span></td>`;
+    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong></td><td></td><td></td><td>${resourceStatus(group)}</td><td class="right"><span class="row-actions"><button data-edit-group="${group.id}">配置</button>${catalogToggleButton('group', group)}</span></td>`;
     $('strong', tr).textContent = group.name; tr.children[1].textContent = group.description || '-'; tr.children[2].textContent = group.sort; return tr;
   }));
   $('#adminUpgradeTable').replaceChildren(...data.upgrades.map(upgrade => {
-    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong><small></small></td><td></td><td></td><td></td><td></td><td class="right"><span class="row-actions"><button data-edit-upgrade="${upgrade.id}">配置</button><button class="danger" data-disable-upgrade="${upgrade.id}">停用</button></span></td>`;
+    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong><small></small></td><td></td><td></td><td></td><td></td><td class="right"><span class="row-actions"><button data-edit-upgrade="${upgrade.id}">配置</button>${catalogToggleButton('upgrade', upgrade)}</span></td>`;
     $('strong', tr).textContent = upgrade.name; $('small', tr).textContent = upgrade.enabled ? '启用' : '停用'; tr.children[1].textContent = formatMoney(upgrade.price_cents); tr.children[2].textContent = `+${upgrade.domain_increment}`; tr.children[3].textContent = `+${formatBytes(upgrade.traffic_increment_bytes)}`; tr.children[4].textContent = `+${upgrade.port_increment}`; return tr;
   }));
   $('#adminTrafficTable').replaceChildren(...data.trafficPackages.map(item => {
-    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong><small></small></td><td></td><td></td><td></td><td>${resourceStatus(item)}</td><td class="right"><span class="row-actions"><button data-edit-traffic="${item.id}">配置</button><button class="danger" data-disable-traffic="${item.id}">停用</button></span></td>`;
+    const tr = document.createElement('tr'); tr.innerHTML = `<td><strong></strong><small></small></td><td></td><td></td><td></td><td>${resourceStatus(item)}</td><td class="right"><span class="row-actions"><button data-edit-traffic="${item.id}">配置</button>${catalogToggleButton('traffic', item)}</span></td>`;
     $('strong', tr).textContent = item.name; $('small', tr).textContent = item.description || ''; tr.children[1].textContent = formatBytes(item.traffic_bytes); tr.children[2].textContent = formatMoney(item.price_cents); tr.children[3].textContent = `${item.duration_days} 天`; return tr;
   }));
   $('#adminRedemptionTable').replaceChildren(...data.codes.map(code => {
@@ -1276,8 +1324,14 @@ function openPlanDialog(plan = null) {
   const form = $('#planForm'); form.reset(); const data = state.billingAdmin;
   fillSelect(form.elements.groupId, data.groups, group => group.name, true);
   const mappings = state.upstreams.filter(item => item.status === 'active').flatMap(account => account.packages.filter(item => item.enabled).map(item => ({ id: `${account.id}:${item.packageId}`, label: `${account.name} / ${item.name} (#${item.packageId})` })));
+  if (plan?.upstreamId && plan?.upstreamPackageId) {
+    const currentId = `${plan.upstreamId}:${plan.upstreamPackageId}`;
+    if (!mappings.some(item => item.id === currentId)) {
+      mappings.unshift({ id: currentId, label: `${plan.upstreamName || '上游'} / ${plan.upstreamPackageName || plan.upstreamPackageId}（当前绑定）` });
+    }
+  }
   fillSelect(form.elements.upstreamMapping, mappings, item => item.label);
-  form.elements.id.value = plan?.id || ''; form.elements.code.value = plan?.code || ''; form.elements.name.value = plan?.name || ''; form.elements.price.value = plan ? plan.priceCents / 100 : ''; form.elements.durationDays.value = plan?.durationDays || 30; form.elements.domainLimit.value = plan?.domainLimit ?? ''; form.elements.trafficGiB.value = plan?.trafficLimitBytes === null ? '' : Number(plan?.trafficLimitBytes || 0) / GIB; form.elements.portLimit.value = plan?.portLimit ?? ''; form.elements.groupId.value = plan?.groupId ?? ''; form.elements.description.value = plan?.description || ''; form.elements.enabled.checked = plan ? plan.enabled : true;
+  form.elements.id.value = plan?.id || ''; form.elements.code.value = plan?.code || ''; form.elements.name.value = plan?.name || ''; form.elements.price.value = plan ? plan.priceCents / 100 : ''; form.elements.durationDays.value = plan?.durationDays || 30; form.elements.domainLimit.value = plan?.domainLimit ?? ''; form.elements.trafficGiB.value = plan?.trafficLimitBytes === null ? '' : Number(plan?.trafficLimitBytes || 0) / GIB; form.elements.portLimit.value = plan?.portLimit ?? ''; form.elements.groupId.value = plan?.groupId ?? ''; form.elements.description.value = plan?.description || ''; form.elements.enabled.checked = plan ? plan.enabled : true; form.elements.purchaseMode.value = plan?.purchaseMode === 'once' ? 'once' : 'stack'; form.elements.maxPurchaseQty.value = plan?.maxPurchaseQty || 1; form.elements.renewalMode.value = plan?.renewalMode === 'off' || plan?.renewalMode === 'window' ? plan.renewalMode : 'anytime'; form.elements.renewalWindowDays.value = plan?.renewalWindowDays || 7;
   form.elements.upstreamMapping.value = plan?.upstreamId && plan?.upstreamPackageId ? `${plan.upstreamId}:${plan.upstreamPackageId}` : '';
   $('#planDialogTitle').textContent = plan ? `配置 ${plan.name}` : '新建套餐'; $('#planDialog').showModal();
 }
@@ -1675,6 +1729,11 @@ function extractItems(data) {
 function resourceStatus(resource) {
   const lifecycle = resourceLifecycle(resource, state.resourceKind);
   return `<span class="badge ${lifecycle.tone}">${lifecycle.label}</span>`;
+}
+
+function catalogToggleButton(kind, item) {
+  if (item.enabled) return `<button class="danger" data-disable-${kind}="${item.id}">停用</button>`;
+  return `<button data-enable-${kind}="${item.id}">启用</button>`;
 }
 
 const resourcePageConfigs = {
@@ -2801,9 +2860,14 @@ function handleError(error) {
   toast(error.message, true);
 }
 
+function hideBootSplash() {
+  $('#bootSplash')?.classList.add('hidden');
+}
+
 function showLogin() {
   clearInterval(serviceStatusTimer); serviceStatusTimer = null;
   state.me = null; state.capabilities = { wafRules: true, attackLogs: true }; $('#appView').classList.add('hidden'); $('#loginView').classList.remove('hidden');
+  hideBootSplash();
   for (const item of [$('#appAnnouncement'), $('#publicAnnouncement')]) item?.classList.add('hidden');
   if ($('#announcementDialog')?.open) $('#announcementDialog').close();
   resetTurnstile('login');
@@ -2816,9 +2880,12 @@ function showAuthForm(id) {
 }
 
 async function showApp() {
-  state.me = await api('/api/me');
-  const settings = await api('/api/auth/config'); applyPublicSettings(settings); await configureTurnstile(settings);
+  state.me = state.me || await api('/api/me');
   $('#loginView').classList.add('hidden'); $('#appView').classList.remove('hidden');
+  hideBootSplash();
+  if (!state.authConfig) {
+    try { const settings = await api('/api/auth/config'); applyPublicSettings(settings); } catch {}
+  }
   $('#accountName').textContent = state.me.user.username; $('#accountInitial').textContent = state.me.user.username[0].toUpperCase();
   $('#accountRole').textContent = state.me.user.role === 'admin' ? (state.me.user.adminRole === 'super_admin' ? '超级管理员' : '管理员') : '客户';
   renderAccountProfile();
@@ -3500,9 +3567,19 @@ $('#refreshBilling').addEventListener('click', () => loadBilling().catch(handleE
 $('#planCatalogTable').addEventListener('click', async event => {
   const button = event.target.closest('[data-buy-plan]'); if (!button) return;
   const plan = state.billingPlans.find(item => item.id === Number(button.dataset.buyPlan));
-  const balanceAfter = state.wallet.balanceCents - Number(plan.priceCents);
-  if (!await confirmAction({ title: '确认购买套餐', message: `${plan.name} · ${plan.durationDays} 天 · 支付 ${formatMoney(plan.priceCents)}。支付后余额 ${formatMoney(balanceAfter)}，套餐立即生效。`, confirmLabel: '余额支付' })) return;
-  try { await api('/api/cdnfly/v1/user-packages', { method: 'POST', body: JSON.stringify({ planId: plan.id }) }); await loadBilling(); toast('支付成功，套餐已生效'); } catch (error) { handleError(error); }
+  const owned = (state.me.billing?.subscriptions || []).find(item => Number(item.plan?.id) === Number(plan.id));
+  const maxQty = Math.max(1, Number(plan.maxPurchaseQty || 1));
+  const qtyInput = button.closest('tr')?.querySelector(`[data-plan-qty="${plan.id}"]`);
+  const qty = Math.min(maxQty, Math.max(1, Number.parseInt(qtyInput?.value || '1', 10) || 1));
+  if (qtyInput) qtyInput.value = qty;
+  const payCents = Number(plan.priceCents) * qty;
+  const days = Number(plan.durationDays) * qty;
+  const balanceAfter = state.wallet.balanceCents - payCents;
+  const message = owned
+    ? `${plan.name} × ${qty} 份，将在当前到期时间上延长 ${days} 天，支付 ${formatMoney(payCents)}。支付后余额 ${formatMoney(balanceAfter)}。`
+    : `${plan.name} × ${qty} 份 · ${days} 天 · 支付 ${formatMoney(payCents)}。支付后余额 ${formatMoney(balanceAfter)}，套餐立即生效。`;
+  if (!await confirmAction({ title: owned ? '确认叠加时长' : '确认购买套餐', message, confirmLabel: '余额支付' })) return;
+  try { await api('/api/cdnfly/v1/user-packages', { method: 'POST', body: JSON.stringify({ planId: plan.id, amount: qty }) }); await loadBilling(); toast(qty > 1 ? `支付成功，已开通 ${qty} 个周期` : '支付成功，套餐已生效'); } catch (error) { handleError(error); }
 });
 $('#addonCatalogTable').addEventListener('click', async event => {
   const upgrade = event.target.closest('[data-buy-upgrade]'); const traffic = event.target.closest('[data-buy-traffic]'); if (!upgrade && !traffic) return;
@@ -3581,7 +3658,7 @@ $('#copyGeneratedCodes').addEventListener('click', async () => { try { await nav
 $('#planForm').addEventListener('submit', async event => {
   event.preventDefault(); const form = event.currentTarget; const id = form.elements.id.value; const nullableInt = value => value === '' ? null : Number(value);
   const mapping = form.elements.upstreamMapping.value; const separator = mapping.indexOf(':');
-  const body = { code: form.elements.code.value.trim(), name: form.elements.name.value.trim(), description: form.elements.description.value.trim(), priceCents: Math.round(Number(form.elements.price.value) * 100), durationDays: Number(form.elements.durationDays.value), domainLimit: nullableInt(form.elements.domainLimit.value), trafficLimitBytes: form.elements.trafficGiB.value === '' ? null : Math.round(Number(form.elements.trafficGiB.value) * GIB), portLimit: nullableInt(form.elements.portLimit.value), groupId: form.elements.groupId.value === '' ? null : Number(form.elements.groupId.value), upstreamId: Number(mapping.slice(0, separator)), upstreamPackageId: mapping.slice(separator + 1), enabled: form.elements.enabled.checked };
+  const body = { code: form.elements.code.value.trim(), name: form.elements.name.value.trim(), description: form.elements.description.value.trim(), priceCents: Math.round(Number(form.elements.price.value) * 100), durationDays: Number(form.elements.durationDays.value), domainLimit: nullableInt(form.elements.domainLimit.value), trafficLimitBytes: form.elements.trafficGiB.value === '' ? null : Math.round(Number(form.elements.trafficGiB.value) * GIB), portLimit: nullableInt(form.elements.portLimit.value), groupId: form.elements.groupId.value === '' ? null : Number(form.elements.groupId.value), upstreamId: Number(mapping.slice(0, separator)), upstreamPackageId: mapping.slice(separator + 1), enabled: form.elements.enabled.checked, purchaseMode: form.elements.purchaseMode.value, maxPurchaseQty: Number(form.elements.maxPurchaseQty.value || 1), renewalMode: form.elements.renewalMode.value, renewalWindowDays: Number(form.elements.renewalWindowDays.value || 7) };
   try { await api(`/api/admin/billing/plans${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) }); $('#planDialog').close(); await loadBillingAdmin(); toast('套餐已保存'); } catch (error) { handleError(error); }
 });
 
@@ -3602,7 +3679,7 @@ $('#subscriptionForm').addEventListener('submit', async event => {
 });
 
 $('#billing-admin').addEventListener('click', async event => {
-  const editPlan = event.target.closest('[data-edit-plan]'); const disablePlan = event.target.closest('[data-disable-plan]'); const editGroup = event.target.closest('[data-edit-group]'); const disableGroup = event.target.closest('[data-disable-group]'); const editUpgrade = event.target.closest('[data-edit-upgrade]'); const disableUpgrade = event.target.closest('[data-disable-upgrade]'); const editTraffic = event.target.closest('[data-edit-traffic]'); const disableTraffic = event.target.closest('[data-disable-traffic]'); const disableCode = event.target.closest('[data-disable-code]'); const codeUses = event.target.closest('[data-code-uses]'); const cancelSubscription = event.target.closest('[data-cancel-subscription]'); const adjustWallet = event.target.closest('[data-adjust-wallet]'); const disableRecharge = event.target.closest('[data-disable-recharge]'); const rechargeUses = event.target.closest('[data-recharge-uses]'); const orderDetail = event.target.closest('[data-order-detail]');
+  const editPlan = event.target.closest('[data-edit-plan]'); const enablePlan = event.target.closest('[data-enable-plan]'); const disablePlan = event.target.closest('[data-disable-plan]'); const deletePlan = event.target.closest('[data-delete-plan]'); const editGroup = event.target.closest('[data-edit-group]'); const enableGroup = event.target.closest('[data-enable-group]'); const disableGroup = event.target.closest('[data-disable-group]'); const editUpgrade = event.target.closest('[data-edit-upgrade]'); const enableUpgrade = event.target.closest('[data-enable-upgrade]'); const disableUpgrade = event.target.closest('[data-disable-upgrade]'); const editTraffic = event.target.closest('[data-edit-traffic]'); const enableTraffic = event.target.closest('[data-enable-traffic]'); const disableTraffic = event.target.closest('[data-disable-traffic]'); const disableCode = event.target.closest('[data-disable-code]'); const codeUses = event.target.closest('[data-code-uses]'); const cancelSubscription = event.target.closest('[data-cancel-subscription]'); const adjustWallet = event.target.closest('[data-adjust-wallet]'); const disableRecharge = event.target.closest('[data-disable-recharge]'); const rechargeUses = event.target.closest('[data-recharge-uses]'); const orderDetail = event.target.closest('[data-order-detail]');
   if (editPlan) return openPlanDialog(state.billingAdmin.plans.find(item => item.id === Number(editPlan.dataset.editPlan)));
   if (editGroup) return openCatalogDialog('group', state.billingAdmin.groups.find(item => item.id === Number(editGroup.dataset.editGroup)));
   if (editUpgrade) return openCatalogDialog('upgrade', state.billingAdmin.upgrades.find(item => item.id === Number(editUpgrade.dataset.editUpgrade)));
@@ -3610,15 +3687,35 @@ $('#billing-admin').addEventListener('click', async event => {
   if (adjustWallet) { const wallet = state.billingAdmin.wallets.find(item => item.userId === Number(adjustWallet.dataset.adjustWallet)); const form = $('#walletAdjustForm'); form.reset(); form.elements.userId.value = wallet.userId; $('#walletAdjustTitle').textContent = `调整 ${wallet.username} 的余额`; return $('#walletAdjustDialog').showModal(); }
   if (orderDetail) return openOrderDetail(Number(orderDetail.dataset.orderDetail)).catch(handleError);
   try {
-    let path; let message;
+    let path; let message; let enable = false;
+    if (enablePlan) { path = `plans/${enablePlan.dataset.enablePlan}`; message = '套餐已启用'; enable = true; }
     if (disablePlan) { path = `plans/${disablePlan.dataset.disablePlan}`; message = '套餐已停用'; }
+    if (deletePlan) {
+      if (!await confirmAction({ title: '确认删除套餐', message: '将从目录里彻底删除该套餐。有客户订阅或兑换码引用时会拒绝删除。停用请用旁边的停用按钮。', confirmLabel: '确认删除', danger: true })) return;
+      await api(`/api/admin/billing/plans/${deletePlan.dataset.deletePlan}?purge=1`, { method: 'DELETE' });
+      await loadBillingAdmin();
+      return toast('套餐已删除');
+    }
+    if (enableGroup) { path = `groups/${enableGroup.dataset.enableGroup}`; message = '分组已启用'; enable = true; }
     if (disableGroup) { path = `groups/${disableGroup.dataset.disableGroup}`; message = '分组已停用'; }
+    if (enableUpgrade) { path = `upgrades/${enableUpgrade.dataset.enableUpgrade}`; message = '增值项已启用'; enable = true; }
     if (disableUpgrade) { path = `upgrades/${disableUpgrade.dataset.disableUpgrade}`; message = '增值项已停用'; }
+    if (enableTraffic) { path = `traffic-packages/${enableTraffic.dataset.enableTraffic}`; message = '流量包已启用'; enable = true; }
     if (disableTraffic) { path = `traffic-packages/${disableTraffic.dataset.disableTraffic}`; message = '流量包已停用'; }
     if (disableCode) { path = `redemption-codes/${disableCode.dataset.disableCode}`; message = '兑换码已停用'; }
     if (disableRecharge) { path = `recharge-codes/${disableRecharge.dataset.disableRecharge}`; message = '充值码已停用'; }
     if (cancelSubscription) { path = `subscriptions/${cancelSubscription.dataset.cancelSubscription}`; message = '用户套餐已取消'; }
-    if (path) { if (!await confirmAction({ title: '确认停用', message: '历史交易和审计记录会保留，停用后的目录项或兑换码不能继续使用。', confirmLabel: '确认停用', danger: true })) return; await api(`/api/admin/billing/${path}`, { method: 'DELETE' }); await loadBillingAdmin(); return toast(message); }
+    if (path) {
+      if (enable) {
+        await api(`/api/admin/billing/${path}`, { method: 'PUT', body: JSON.stringify({ enabled: true }) });
+        await loadBillingAdmin();
+        return toast(message);
+      }
+      if (!await confirmAction({ title: '确认停用', message: '历史交易和审计记录会保留，停用后的目录项或兑换码不能继续购买或使用。需要恢复时点启用。', confirmLabel: '确认停用', danger: true })) return;
+      await api(`/api/admin/billing/${path}`, { method: 'DELETE' });
+      await loadBillingAdmin();
+      return toast(message);
+    }
     if (codeUses) { const result = await api(`/api/admin/billing/redemption-codes/${codeUses.dataset.codeUses}/uses`); return showRecords('权益兑换记录', result.uses.map(item => ({ title: `${item.username} · 订单 #${item.orderId}`, detail: formatDate(item.redeemedAt) })), '该兑换码暂无使用记录'); }
     if (rechargeUses) { const result = await api(`/api/admin/billing/recharge-codes/${rechargeUses.dataset.rechargeUses}/uses`); return showRecords('余额充值记录', result.uses.map(item => ({ title: `${item.username} · ${formatMoney(item.amountCents)}`, detail: formatDate(item.redeemedAt) })), '该充值码暂无使用记录'); }
   } catch (error) { handleError(error); }
@@ -4067,13 +4164,19 @@ window.addEventListener('resize', () => { clearTimeout(chartResizeTimer); chartR
 updateSystemClock(); setInterval(updateSystemClock, 1000);
 
 async function bootstrap() {
+  const last = recalledServiceStatus();
+  if (last) paintServiceStatus(last);
   try {
-    const settings = await api('/api/auth/config'); applyPublicSettings(settings);
-    await configureTurnstile(settings);
-  } catch (error) { toast(error.message || '登录配置加载失败', true); }
-  try {
-    const session = await api('/api/auth/session');
-    if (session.authenticated) await showApp(); else showLogin();
+    const [settingsResult, meResult] = await Promise.allSettled([api('/api/auth/config'), api('/api/me')]);
+    if (settingsResult.status === 'fulfilled') applyPublicSettings(settingsResult.value);
+    else toast(settingsResult.reason?.message || '登录配置加载失败', true);
+    if (meResult.status === 'fulfilled' && meResult.value?.user) {
+      state.me = meResult.value;
+      await showApp();
+    } else {
+      showLogin();
+      if (state.authConfig) configureTurnstile(state.authConfig).catch(() => {});
+    }
   } catch { showLogin(); }
 }
 bootstrap();
