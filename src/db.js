@@ -233,11 +233,27 @@ async function migrateBrandDefaults(db) {
     WHERE key='site_subtitle' AND value IN ('企业商用 CDN 用户控制台','边缘交付管理平台')`).run(BRAND_SUBTITLE);
 }
 
+async function migratePlanAcquisitions(db) {
+  const rows = await db.prepare("SELECT user_id,product_id,metadata FROM orders WHERE type='plan_change'").all();
+  for (const row of rows) {
+    let metadata = {};
+    try { metadata = JSON.parse(row.metadata || '{}'); } catch {}
+    const planIds = new Set([row.product_id, metadata.fromPlanId, metadata.toPlanId]
+      .map(Number).filter(Number.isInteger));
+    for (const planId of planIds) {
+      if (!await db.prepare('SELECT id FROM plans WHERE id=?').get(planId)) continue;
+      await db.prepare(`INSERT INTO user_plan_acquisitions (user_id,plan_id) VALUES (?,?)
+        ON CONFLICT(user_id,plan_id) DO NOTHING`).run(row.user_id, planId);
+    }
+  }
+}
+
 export async function createPostgresDatabase(connectionString) {
   if (!connectionString) throw new Error('DATABASE_URL 未配置');
   const pool = new pg.Pool({ connectionString, max: 12, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 8_000 });
   const db = new PostgresDatabase(pool);
   await db.exec(SCHEMA);
+  await migratePlanAcquisitions(db);
   await migrateBrandDefaults(db);
   await migrateCustomerSiteGroups(db);
   await migrateCustomerStreamGroups(db);
@@ -273,4 +289,4 @@ export function publicUser(user) {
   };
 }
 
-export const databaseInternals = { postgresSql, migrateBrandDefaults, migrateCustomerSiteGroups, migrateCustomerStreamGroups };
+export const databaseInternals = { postgresSql, migrateBrandDefaults, migrateCustomerSiteGroups, migrateCustomerStreamGroups, migratePlanAcquisitions };

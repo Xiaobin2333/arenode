@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Arenode 控制台</title>
-  <link rel="stylesheet" href="/styles.css?v=arenode">
+  <link rel="stylesheet" href="/styles.css?v=status2">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="bootSplash" class="boot-splash" role="status" aria-live="polite">正在进入控制台</div>
 
-  <main id="loginView" class="login-shell">
+  <main id="loginView" class="login-shell hidden">
     <section class="login-brand" aria-label="Arenode">
       <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
       <div>
@@ -631,6 +632,10 @@
     <input type="hidden" name="id"><div class="form-grid">
       <label>套餐代码<input name="code" required maxlength="40"></label><label>套餐名称<input name="name" required maxlength="80"></label>
       <label>价格（元）<input name="price" type="number" min="0" step="0.01" required></label><label>周期（天）<input name="durationDays" type="number" min="1" value="30" required></label>
+      <label class="full">重复购买<select name="purchaseMode"><option value="stack">多次购买只叠加时长</option><option value="once">每位客户只能买一次</option></select></label>
+      <label class="full">单次最高购买数量<input name="maxPurchaseQty" type="number" min="1" value="1" required></label>
+      <label class="full">续费策略<select name="renewalMode"><option value="anytime">随时可续费 / 叠加</option><option value="window">仅到期前可续费</option><option value="off">禁止续费（适配试用）</option></select></label>
+      <label class="full">到期前几天可续费<input name="renewalWindowDays" type="number" min="1" value="7" required></label>
       <label>加速域名数<input name="domainLimit" type="number" min="0" placeholder="留空为不限"></label><label>月流量（GiB）<input name="trafficGiB" type="number" min="0" step="0.01" placeholder="留空为不限"></label>
       <label>HTTP / 转发端口<input name="portLimit" type="number" min="0" placeholder="留空为不限"></label><label>套餐分组<select name="groupId"></select></label>
       <label class="full">上游套餐<select name="upstreamMapping" required></select></label>
@@ -750,6 +755,6 @@
   <dialog id="recordDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">RECORDS</p><h3 id="recordDialogTitle">记录</h3></div><button type="button" class="icon-button" data-close="recordDialog" aria-label="关闭">×</button></div><div id="recordDialogBody" class="record-list"></div><div class="dialog-actions"><button type="button" class="primary" data-close="recordDialog">关闭</button></div></form></dialog>
   <dialog id="inviteDialog"><form id="inviteForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">REGISTRATION INVITE</p><h3>生成邀请码</h3></div><button type="button" class="icon-button" data-close="inviteDialog" aria-label="关闭">×</button></div><label>生成数量<input name="count" type="number" min="1" max="100" value="1" required></label><label>单码可用次数<input name="maxUses" type="number" min="1" max="100000" value="1" required></label><label>过期时间<input name="expiresAt" type="datetime-local"></label><label>标签<input name="label" maxlength="120"></label><div class="dialog-actions"><button type="button" class="secondary" data-close="inviteDialog">取消</button><button type="submit" class="primary">生成邀请码</button></div></form></dialog>
 
-      <script type="module" src="/app.js?v=arenode"></script>
+      <script type="module" src="/app.js?v=status2"></script>
 </body>
 </html>

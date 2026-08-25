@@ -181,6 +181,18 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS upstream_id BIGINT REFERENCES upstream_accounts(id) ON DELETE RESTRICT;
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS upstream_package_id TEXT;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS purchase_mode TEXT NOT NULL DEFAULT 'stack';
+ALTER TABLE plans DROP CONSTRAINT IF EXISTS plans_purchase_mode_check;
+ALTER TABLE plans ADD CONSTRAINT plans_purchase_mode_check CHECK (purchase_mode IN ('once', 'stack'));
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_purchase_qty INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE plans DROP CONSTRAINT IF EXISTS plans_max_purchase_qty_check;
+ALTER TABLE plans ADD CONSTRAINT plans_max_purchase_qty_check CHECK (max_purchase_qty >= 1);
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS renewal_mode TEXT NOT NULL DEFAULT 'anytime';
+ALTER TABLE plans DROP CONSTRAINT IF EXISTS plans_renewal_mode_check;
+ALTER TABLE plans ADD CONSTRAINT plans_renewal_mode_check CHECK (renewal_mode IN ('off', 'anytime', 'window'));
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS renewal_window_days INTEGER NOT NULL DEFAULT 7;
+ALTER TABLE plans DROP CONSTRAINT IF EXISTS plans_renewal_window_days_check;
+ALTER TABLE plans ADD CONSTRAINT plans_renewal_window_days_check CHECK (renewal_window_days >= 1);
 CREATE TABLE IF NOT EXISTS subscriptions (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -197,6 +209,15 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS renewal_failed_at TIMESTAMPTZ
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS last_renewed_at TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS upstream_id BIGINT REFERENCES upstream_accounts(id) ON DELETE RESTRICT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS upstream_package_id TEXT;
+CREATE TABLE IF NOT EXISTS user_plan_acquisitions (
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_id BIGINT NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
+  acquired_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, plan_id)
+);
+INSERT INTO user_plan_acquisitions (user_id, plan_id)
+  SELECT DISTINCT user_id, plan_id FROM subscriptions
+  ON CONFLICT(user_id, plan_id) DO NOTHING;
 
 -- Website groups are reseller-console metadata. They deliberately stay local:
 -- customers sharing one CDNFly account must never create or rename upstream
@@ -382,6 +403,10 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_transaction_id BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idempotency ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL;
+INSERT INTO user_plan_acquisitions (user_id, plan_id)
+  SELECT DISTINCT o.user_id, o.product_id FROM orders o JOIN plans p ON p.id=o.product_id
+  WHERE o.product_id IS NOT NULL AND o.type IN ('plan', 'renewal', 'plan_change')
+  ON CONFLICT(user_id, plan_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS monthly_usage (
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   period TEXT NOT NULL,

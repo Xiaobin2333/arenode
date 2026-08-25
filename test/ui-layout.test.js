@@ -16,8 +16,13 @@ test('新版工作台导航和主面板保持稳定布局', () => {
   assert.doesNotMatch(html, /id="resourceTabs"/);
   assert.match(css, /\.data-workbench\s*\{\s*display:\s*block/);
   assert.doesNotMatch(css, /#adminBillingTabs[^{}]*\{[^{}]*display:\s*none/);
-  assert.match(html, /styles\.css\?v=arenode/);
-  assert.match(html, /app\.js\?v=arenode/);
+  assert.match(html, /styles\.css\?v=status2/);
+  assert.match(html, /app\.js\?v=status2/);
+  assert.match(app, /if \(autoRenew\) autoRenew\.checked/);
+  assert.match(app, /if \(last\) paintServiceStatus\(last\)/);
+  assert.match(app, /sessionStorage\.setItem\('arenode-service-status'/);
+  assert.match(html, /id="bootSplash"/);
+  assert.match(html, /id="loginView" class="login-shell hidden"/);
   assert.match(html, /<title>Arenode 控制台<\/title>/);
   assert.match(html, /class="arenode-logo"[^>]*>A<\/div>/);
   assert.match(app, /function syncWorkbenchLayout\(\)/);

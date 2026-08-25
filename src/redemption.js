@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { pagination, paged, searchLike } from './http-utils.js';
+import { billingInternals } from './billing.js';
 
 function httpError(message, status = 400) { return Object.assign(new Error(message), { status }); }
 function int(value, name, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -92,7 +93,7 @@ async function createCodes(db, user, body) {
 }
 
 async function redeem(db, billing, user, value) {
-  const hash = digestCode(value); const now = new Date(); let orderId; let codeId;
+  const hash = digestCode(value); const now = new Date(); let orderId; let codeId; let acquiredPlanId = null;
   await db.transaction(async transaction => {
     const code = await transaction.prepare('SELECT * FROM redemption_codes WHERE code_hash = ? FOR UPDATE').get(hash);
     if (!code || code.status !== 'active') throw httpError('兑换码不存在或已停用', 404);
@@ -110,10 +111,24 @@ async function redeem(db, billing, user, value) {
           WHERE up.upstream_id=? AND up.package_id=? AND up.enabled=1 AND ua.status='active'`).get(item.upstream_id, item.upstream_package_id);
         if (!upstreamPackage) throw httpError('兑换套餐绑定的上游套餐不可用', 409);
       }
-      const start = new Date(); const end = new Date(start.getTime() + item.duration_days * code.amount * 86400_000);
-      subscriptionId = Number((await transaction.prepare(`INSERT INTO subscriptions
-        (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id)
-        VALUES (?, ?, 'active', ?, ?, ?, ?)`).run(user.id, item.id, start.toISOString(), end.toISOString(), item.upstream_id, item.upstream_package_id)).lastInsertRowid);
+      const mode = billingInternals.purchaseMode(item);
+      const firstAcquisition = await billingInternals.checkPlanAcquisition(transaction, user.id, item.id);
+      if (mode === 'once' && !firstAcquisition) throw httpError('该套餐每位客户只能兑换一次', 409);
+      acquiredPlanId = item.id;
+      const owned = await billingInternals.livePlanSubscription(transaction, user.id, item.id, { forUpdate: true });
+      if (owned && mode === 'once') throw httpError('该套餐每位客户只能兑换一次', 409);
+      if (owned && mode === 'stack') billingInternals.assertRenewalAllowed(item, owned, now);
+      if (owned && mode === 'stack') {
+        const end = billingInternals.addDays(billingInternals.stackBaseDate(owned, now), item.duration_days * code.amount);
+        await transaction.prepare(`UPDATE subscriptions SET status='active', ends_at=?, grace_ends_at=NULL, last_renewed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(end.toISOString(), owned.id);
+        subscriptionId = Number(owned.id);
+      } else {
+        const start = new Date(); const end = new Date(start.getTime() + item.duration_days * code.amount * 86400_000);
+        subscriptionId = Number((await transaction.prepare(`INSERT INTO subscriptions
+          (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id)
+          VALUES (?, ?, 'active', ?, ?, ?, ?)`).run(user.id, item.id, start.toISOString(), end.toISOString(), item.upstream_id, item.upstream_package_id)).lastInsertRowid);
+      }
     } else {
       if (!subscriptionId) throw httpError('请先开通有效套餐', 409);
       if (code.type === 'upgrade') {
@@ -133,6 +148,7 @@ async function redeem(db, billing, user, value) {
       .run(user.id, code.type, item.id, subscriptionId, JSON.stringify({ redemptionCodeId: code.id, amount: code.amount }))).lastInsertRowid);
     await transaction.prepare('INSERT INTO redemption_uses (code_id, user_id, order_id) VALUES (?, ?, ?)').run(code.id, user.id, orderId);
     await transaction.prepare('UPDATE redemption_codes SET used_count = used_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(code.id);
+    if (acquiredPlanId) await billingInternals.recordPlanAcquisition(transaction, user.id, acquiredPlanId);
     codeId = code.id;
   });
   await billing.updateLegacySiteLimit(user.id);

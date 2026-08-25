@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createDatabase } from '../src/db.js';
+import { createDatabase, databaseInternals } from '../src/db.js';
 import { hashPassword } from '../src/security.js';
-import { BillingService } from '../src/billing.js';
+import { BillingService, seedBilling } from '../src/billing.js';
 import { createApp } from '../src/app.js';
 import { tenantProxyInternals } from '../src/tenant-proxy.js';
 
@@ -192,6 +192,7 @@ test('余额不足时套餐订单与订阅均不落库', async t => {
   assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: plan.id })).status, 409);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM orders WHERE user_id=?').get(f.ids.alice).count, beforeOrders);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE user_id=?').get(f.ids.alice).count, beforeSubscriptions);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM user_plan_acquisitions WHERE user_id=? AND plan_id=?').get(f.ids.alice, plan.id).count, 0);
 });
 
 test('自动续费只扣款一次，重复执行返回幂等结果', async () => {
@@ -439,6 +440,7 @@ test('套餐升配余额不足时订单、钱包和套餐全部回滚', async t 
   assert.equal(f.db.prepare('SELECT balance_cents FROM wallets WHERE user_id=?').get(f.ids.alice).balance_cents, 2499);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM orders WHERE user_id=?').get(f.ids.alice).count, beforeOrders);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM wallet_transactions WHERE user_id=?').get(f.ids.alice).count, beforeTransactions);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM user_plan_acquisitions WHERE user_id=? AND plan_id=?').get(f.ids.alice, target.id).count, 0);
 });
 
 test('套餐升降配拒绝跨上游映射和其他租户套餐实例', async t => {
@@ -472,4 +474,156 @@ test('套餐升降配完成后立即恢复或暂停超限资源', async t => {
   assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', cookie, 'PUT', { id: subscription.id, package: trial.id })).status, 200);
   assert.equal(f.db.prepare('SELECT enabled FROM sites WHERE id=?').get(siteId).enabled, 0);
   assert.equal(f.db.prepare('SELECT status FROM subscriptions WHERE id=?').get(subscription.id).status, 'suspended');
+});
+
+test('默认重复购买同一套餐只叠加时长，不新开实例', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const cookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  const existing = await f.billing.activeSubscription(f.ids.alice);
+  const beforeEnds = new Date(existing.ends_at).getTime();
+  const beforeCount = f.db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE user_id=? AND plan_id=?').get(f.ids.alice, trial.id).count;
+  const bought = await request(api.base, '/api/cdnfly/v1/user-packages', cookie, 'POST', { planId: trial.id });
+  assert.equal(bought.status, 201);
+  const payload = await bought.json();
+  assert.equal(payload.data.id, existing.id);
+  assert.equal(f.db.prepare("SELECT type FROM orders WHERE id=?").get(payload.data.orderId).type, 'renewal');
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE user_id=? AND plan_id=?').get(f.ids.alice, trial.id).count, beforeCount);
+  const afterEnds = new Date(f.db.prepare('SELECT ends_at FROM subscriptions WHERE id=?').get(existing.id).ends_at).getTime();
+  assert.ok(afterEnds - beforeEnds >= trial.duration_days * 86400_000 - 2000);
+});
+
+test('限购一次的套餐拒绝客户重复购买和后台再分配', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const adminCookie = await login(api.base, 'admin', 'admin-password');
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  f.db.prepare("UPDATE plans SET purchase_mode='once' WHERE id=?").run(trial.id);
+  assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id })).status, 409);
+  assert.equal((await request(api.base, '/api/admin/billing/subscriptions', adminCookie, 'POST', { userId: f.ids.alice, planId: trial.id })).status, 409);
+  const listed = await (await request(api.base, '/api/cdnfly/v1/packages', userCookie)).json();
+  assert.equal(listed.data.items.find(item => item.id === trial.id).purchaseMode, 'once');
+});
+
+test('首次购买可按后台上限选择数量，超额被拒绝且金额按时长倍数扣款', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const adminCookie = await login(api.base, 'admin', 'admin-password');
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const created = await request(api.base, '/api/admin/billing/plans', adminCookie, 'POST', {
+    code: 'qtyplan', name: '数量套餐', priceCents: 1000, durationDays: 30, domainLimit: 2, trafficLimitBytes: 10 * 1024 ** 3,
+    portLimit: 1, enabled: true, purchaseMode: 'stack', maxPurchaseQty: 3,
+  });
+  assert.equal(created.status, 201);
+  const plan = (await created.json()).plan;
+  assert.equal(plan.maxPurchaseQty, 3);
+  const before = f.db.prepare('SELECT balance_cents FROM wallets WHERE user_id=?').get(f.ids.alice).balance_cents;
+  assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: plan.id, amount: 4 })).status, 409);
+  const bought = await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: plan.id, amount: 3 });
+  assert.equal(bought.status, 201);
+  const payload = await bought.json();
+  assert.equal(f.db.prepare('SELECT balance_cents FROM wallets WHERE user_id=?').get(f.ids.alice).balance_cents, before - 3000);
+  assert.equal(f.db.prepare('SELECT amount_cents FROM orders WHERE id=?').get(payload.data.orderId).amount_cents, 3000);
+  const sub = f.db.prepare('SELECT starts_at, ends_at FROM subscriptions WHERE id=?').get(payload.data.id);
+  assert.ok(new Date(sub.ends_at) - new Date(sub.starts_at) >= 90 * 86400_000 - 2000);
+});
+
+test('禁止续费的套餐拒绝叠加、自动续费和开启自动续费', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const adminCookie = await login(api.base, 'admin', 'admin-password');
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  const saved = await request(api.base, `/api/admin/billing/plans/${trial.id}`, adminCookie, 'PUT', { renewalMode: 'off' });
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).plan.renewalMode, 'off');
+  assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id })).status, 409);
+  const existing = await f.billing.activeSubscription(f.ids.alice);
+  assert.equal((await request(api.base, `/api/cdnfly/v1/user-packages/${existing.id}`, userCookie, 'PUT', { autoRenew: true })).status, 409);
+  assert.equal((await request(api.base, `/api/cdnfly/v1/user-packages/${existing.id}/renew`, userCookie, 'POST', {})).status, 409);
+});
+
+test('到期前窗口套餐只在剩余天数进入窗口后才允许叠加', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const adminCookie = await login(api.base, 'admin', 'admin-password');
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  const existing = await f.billing.activeSubscription(f.ids.alice);
+  assert.equal((await request(api.base, `/api/admin/billing/plans/${trial.id}`, adminCookie, 'PUT', { renewalMode: 'window', renewalWindowDays: 3 })).status, 200);
+  assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id })).status, 409);
+  f.db.prepare("UPDATE subscriptions SET ends_at=? WHERE id=?").run(new Date(Date.now() + 2 * 86400_000).toISOString(), existing.id);
+  const bought = await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id });
+  assert.equal(bought.status, 201);
+  assert.equal(f.db.prepare("SELECT type FROM orders WHERE id=?").get((await bought.json()).data.orderId).type, 'renewal');
+});
+
+test('限购一次的套餐在过期或取消后仍拒绝再次购买和后台分配', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const adminCookie = await login(api.base, 'admin', 'admin-password');
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  const existing = await f.billing.activeSubscription(f.ids.alice);
+  f.db.prepare("UPDATE plans SET purchase_mode='once' WHERE id=?").run(trial.id);
+  f.db.prepare("UPDATE subscriptions SET status='expired', ends_at=? WHERE id=?")
+    .run(new Date(Date.now() - 86400_000).toISOString(), existing.id);
+
+  assert.equal((await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id })).status, 409);
+  assert.equal((await request(api.base, '/api/admin/billing/subscriptions', adminCookie, 'POST', { userId: f.ids.alice, planId: trial.id })).status, 409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE user_id=? AND plan_id=?').get(f.ids.alice, trial.id).count, 1);
+});
+
+test('套餐升降配不能绕过限购一次规则', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  const standard = f.db.prepare("SELECT * FROM plans WHERE code='standard'").get();
+  f.db.prepare("UPDATE plans SET purchase_mode='once' WHERE id=?").run(trial.id);
+  const standardSubscriptionId = await f.billing.assignPlan(f.ids.alice, standard.id);
+
+  assert.equal((await request(api.base, `/api/cdnfly/v1/user-packages/${standardSubscriptionId}`, userCookie, 'PUT', { planId: trial.id })).status, 409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE user_id=? AND plan_id=?').get(f.ids.alice, trial.id).count, 1);
+});
+
+test('退款较早的叠加订单只撤销该订单时长并保留后续购买', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const adminCookie = await login(api.base, 'admin', 'admin-password');
+  const userCookie = await login(api.base, 'alice', 'alice-password');
+  const trial = f.db.prepare("SELECT * FROM plans WHERE code='trial'").get();
+  const subscription = await f.billing.activeSubscription(f.ids.alice);
+  const initialEndsAt = new Date(subscription.ends_at).getTime();
+  const first = await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id });
+  const firstOrderId = (await first.json()).data.orderId;
+  const second = await request(api.base, '/api/cdnfly/v1/user-packages', userCookie, 'POST', { planId: trial.id });
+  const secondOrderId = (await second.json()).data.orderId;
+
+  assert.equal((await request(api.base, `/api/admin/billing/orders/${firstOrderId}/refund`, adminCookie, 'POST', {})).status, 200);
+  const finalEndsAt = new Date(f.db.prepare('SELECT ends_at FROM subscriptions WHERE id=?').get(subscription.id).ends_at).getTime();
+  assert.ok(finalEndsAt - initialEndsAt >= trial.duration_days * 86400_000 - 2000);
+  assert.equal(f.db.prepare('SELECT status FROM orders WHERE id=?').get(firstOrderId).status, 'refunded');
+  assert.equal(f.db.prepare('SELECT status FROM orders WHERE id=?').get(secondOrderId).status, 'paid');
+});
+
+test('主动清空套餐目录后初始化不会恢复默认套餐', async () => {
+  const db = createDatabase();
+  await seedBilling(db);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM plans').get().count, 6);
+  db.prepare('DELETE FROM plans').run();
+  await seedBilling(db);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM plans').get().count, 0);
+  db.close();
+});
+
+test('套餐获取记录迁移恢复升降配前后套餐并忽略损坏快照', async () => {
+  const db = createDatabase();
+  await seedBilling(db);
+  const userId = Number(db.prepare('INSERT INTO users (username,password_hash,role) VALUES (?,?,?)')
+    .run('migration-user', hashPassword('migration-password'), 'user').lastInsertRowid);
+  const trial = db.prepare("SELECT id FROM plans WHERE code='trial'").get();
+  const standard = db.prepare("SELECT id FROM plans WHERE code='standard'").get();
+  db.prepare(`INSERT INTO orders (user_id,type,product_id,amount_cents,status,metadata)
+    VALUES (?,'plan_change',?,0,'paid',?), (?,'plan_change',?,0,'paid','invalid-json')`)
+    .run(userId, standard.id, JSON.stringify({ fromPlanId: trial.id, toPlanId: standard.id }), userId, standard.id);
+
+  await databaseInternals.migratePlanAcquisitions(db);
+  assert.deepEqual(db.prepare('SELECT plan_id FROM user_plan_acquisitions WHERE user_id=? ORDER BY plan_id').all(userId).map(row => row.plan_id),
+    [trial.id, standard.id]);
+  db.close();
 });

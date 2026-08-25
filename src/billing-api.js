@@ -60,10 +60,13 @@ async function fulfillOrder(db, order) {
 }
 
 async function purchaseWithBalance(db, billing, { userId, type, productId, subscriptionId = null, amountCents, metadata = null }) {
-  let orderId; let targetSubscriptionId = subscriptionId; let balanceCents;
+  let orderId; let targetSubscriptionId = subscriptionId; let balanceCents; let acquiredPlanId = null;
   await db.transaction(async transaction => {
-    const wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
-    if (!wallet || Number(wallet.balance_cents) < Number(amountCents)) throw httpError('账户余额不足', 409);
+    let wallet = null;
+    if (type !== 'plan') {
+      wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
+      if (!wallet || Number(wallet.balance_cents) < Number(amountCents)) throw httpError('账户余额不足', 409);
+    }
     let product;
     if (type === 'plan') {
       const plan = await transaction.prepare('SELECT * FROM plans WHERE id=? AND enabled=1').get(productId);
@@ -75,11 +78,34 @@ async function purchaseWithBalance(db, billing, { userId, type, productId, subsc
           WHERE up.upstream_id=? AND up.package_id=? AND up.enabled=1 AND ua.status='active'`).get(plan.upstream_id, plan.upstream_package_id);
         if (!upstreamPackage) throw httpError('套餐暂不可购买：绑定的上游套餐不可用', 409);
       }
-      product = { name: plan.name, priceCents: Number(plan.price_cents), durationDays: Number(plan.duration_days), domainLimit: plan.domain_limit, trafficLimitBytes: plan.traffic_limit_bytes, portLimit: plan.port_limit };
-      const start = new Date();
-      targetSubscriptionId = Number((await transaction.prepare(`INSERT INTO subscriptions
-        (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id) VALUES (?, ?, 'pending', ?, ?, ?, ?)`)
-        .run(userId, plan.id, start.toISOString(), new Date(start.getTime() + plan.duration_days * 86400_000).toISOString(), plan.upstream_id, plan.upstream_package_id)).lastInsertRowid);
+      const now = new Date();
+      const mode = billingInternals.purchaseMode(plan);
+      const firstAcquisition = await billingInternals.checkPlanAcquisition(transaction, userId, plan.id);
+      if (mode === 'once' && !firstAcquisition) throw httpError('该套餐每位客户只能购买一次', 409);
+      acquiredPlanId = plan.id;
+      const owned = await billingInternals.livePlanSubscription(transaction, userId, plan.id, { forUpdate: true });
+      if (owned && mode === 'once') throw httpError('该套餐每位客户只能购买一次', 409);
+      if (owned && mode === 'stack') billingInternals.assertRenewalAllowed(plan, owned, now);
+      const qty = normalizePurchaseQty(metadata?.amount ?? 1, plan);
+      const durationDays = Number(plan.duration_days) * qty;
+      amountCents = Number(plan.price_cents) * qty;
+      wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
+      if (!wallet || Number(wallet.balance_cents) < amountCents) throw httpError('账户余额不足', 409);
+      product = { name: plan.name, priceCents: amountCents, durationDays, domainLimit: plan.domain_limit, trafficLimitBytes: plan.traffic_limit_bytes, portLimit: plan.port_limit, purchaseMode: mode, amount: qty };
+      if (owned && mode === 'stack') {
+        const previousEndsAt = owned.ends_at;
+        const endsAt = billingInternals.addDays(billingInternals.stackBaseDate(owned, now), durationDays).toISOString();
+        await transaction.prepare(`UPDATE subscriptions SET status='active', ends_at=?, grace_ends_at=NULL, last_renewed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(endsAt, owned.id);
+        targetSubscriptionId = Number(owned.id);
+        type = 'renewal';
+        metadata = { ...(metadata || {}), durationDays, previousEndsAt, endsAt, stacked: true, amount: qty };
+      } else {
+        targetSubscriptionId = Number((await transaction.prepare(`INSERT INTO subscriptions
+          (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id) VALUES (?, ?, 'pending', ?, ?, ?, ?)`)
+          .run(userId, plan.id, now.toISOString(), billingInternals.addDays(now, durationDays).toISOString(), plan.upstream_id, plan.upstream_package_id)).lastInsertRowid);
+        metadata = { ...(metadata || {}), durationDays, amount: qty };
+      }
     } else if (type === 'upgrade') {
       const row = await transaction.prepare('SELECT * FROM plan_upgrades WHERE id=? AND enabled=1').get(productId);
       if (!row) throw httpError('增值项不存在或已停用', 404);
@@ -99,6 +125,7 @@ async function purchaseWithBalance(db, billing, { userId, type, productId, subsc
     await fulfillOrder(transaction, order);
     await transaction.prepare("UPDATE orders SET status='paid', paid_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
       .run(new Date().toISOString(), orderId);
+    if (acquiredPlanId) await billingInternals.recordPlanAcquisition(transaction, userId, acquiredPlanId);
   });
   await billing.updateLegacySiteLimit(userId);
   await billing.enforceUser(userId, { syncTraffic: false });
@@ -161,6 +188,7 @@ async function quoteSubscriptionPlan(db, userId, subscriptionId, targetPlanId) {
 async function changeSubscriptionPlan(db, billing, { userId, subscriptionId, targetPlanId }) {
   let result;
   await db.transaction(async transaction => {
+    await transaction.prepare('SELECT id FROM users WHERE id=? FOR UPDATE').get(Number(userId));
     const subscription = await transaction.prepare(`SELECT s.*, p.name AS plan_name, p.price_cents, p.duration_days,
       p.domain_limit, p.traffic_limit_bytes, p.port_limit
       FROM subscriptions s JOIN plans p ON p.id=s.plan_id
@@ -180,6 +208,10 @@ async function changeSubscriptionPlan(db, billing, { userId, subscriptionId, tar
 
     const targetPlan = await transaction.prepare('SELECT * FROM plans WHERE id=?').get(Number(targetPlanId));
     if (!targetPlan || !Number(targetPlan.enabled)) throw httpError('目标套餐不存在或已停用', 404);
+    const firstAcquisition = await billingInternals.checkPlanAcquisition(transaction, userId, targetPlan.id);
+    if (billingInternals.purchaseMode(targetPlan) === 'once' && !firstAcquisition) {
+      throw httpError('该套餐每位客户只能获取一次', 409);
+    }
     const quote = planChangeQuote(subscription, targetPlan);
     const wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
     if (quote.diffPriceCents > 0 && (!wallet || Number(wallet.balance_cents) < quote.diffPriceCents)) throw httpError('账户余额不足', 409);
@@ -208,6 +240,7 @@ async function changeSubscriptionPlan(db, billing, { userId, subscriptionId, tar
     await transaction.prepare(`UPDATE subscriptions SET plan_id=?, upstream_id=?, upstream_package_id=?,
       renewal_failed_at=NULL, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .run(targetPlan.id, targetPlan.upstream_id, targetPlan.upstream_package_id, subscription.id);
+    await billingInternals.recordPlanAcquisition(transaction, userId, targetPlan.id);
     result = { idempotent: false, orderId, subscriptionId: subscription.id, planId: Number(targetPlan.id),
       balanceCents: changed.balanceCents, ...publicQuote };
   });
@@ -236,9 +269,29 @@ async function refundOrder(db, billing, orderId) {
       await transaction.prepare("UPDATE subscriptions SET status='cancelled', auto_renew=0, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").run(order.subscription_id, order.user_id);
     } else if (order.type === 'renewal') {
       if (!metadata.previousEndsAt) throw httpError('该历史续费订单缺少可回滚快照', 409);
-      const status = new Date(metadata.previousEndsAt) > new Date() ? 'active' : 'expired';
+      const subscription = await transaction.prepare('SELECT ends_at FROM subscriptions WHERE id=? AND user_id=? FOR UPDATE')
+        .get(order.subscription_id, order.user_id);
+      if (!subscription) throw httpError('续费对应的客户套餐不存在', 409);
+      const currentEndsAt = new Date(subscription.ends_at);
+      const previousEndsAt = new Date(metadata.previousEndsAt);
+      const orderEndsAt = new Date(metadata.endsAt || 0);
+      const durationDays = Number(metadata.durationDays);
+      if (!Number.isFinite(currentEndsAt.getTime()) || !Number.isFinite(previousEndsAt.getTime())) {
+        throw httpError('该续费订单的有效期快照无效', 409);
+      }
+      let nextEndsAt;
+      if (Number.isFinite(orderEndsAt.getTime()) && currentEndsAt.getTime() === orderEndsAt.getTime()) {
+        nextEndsAt = previousEndsAt;
+      } else if (Number.isFinite(durationDays) && durationDays > 0) {
+        nextEndsAt = new Date(currentEndsAt.getTime() - durationDays * DAY_MS);
+      } else if (Number.isFinite(orderEndsAt.getTime()) && orderEndsAt > previousEndsAt) {
+        nextEndsAt = new Date(currentEndsAt.getTime() - (orderEndsAt.getTime() - previousEndsAt.getTime()));
+      } else {
+        throw httpError('该历史续费订单缺少可回滚时长', 409);
+      }
+      const status = nextEndsAt > new Date() ? 'active' : 'expired';
       await transaction.prepare('UPDATE subscriptions SET ends_at=?, status=?, auto_renew=0, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?')
-        .run(metadata.previousEndsAt, status, order.subscription_id, order.user_id);
+        .run(nextEndsAt.toISOString(), status, order.subscription_id, order.user_id);
     } else if (order.type === 'upgrade') {
       const row = await transaction.prepare('SELECT amount FROM subscription_upgrades WHERE subscription_id=? AND upgrade_id=?').get(order.subscription_id, order.product_id);
       const amount = Number(metadata.amount || 1);
@@ -274,9 +327,27 @@ function adminPlanInput(body, current = {}) {
     portLimit: body.portLimit === undefined ? current.port_limit : int(body.portLimit, '端口额度', { nullable: true }),
     enabled: body.enabled === undefined ? Number(current.enabled ?? 1) : Number(Boolean(body.enabled)),
     sort: body.sort === undefined ? Number(current.sort || 0) : int(body.sort, '排序'),
+    purchaseMode: body.purchaseMode === undefined ? billingInternals.purchaseMode(current) : String(body.purchaseMode || '').trim(),
+    maxPurchaseQty: body.maxPurchaseQty === undefined ? billingInternals.maxPurchaseQty(current) : int(body.maxPurchaseQty, '单次最高购买数量', { min: 1 }),
+    renewalMode: body.renewalMode === undefined ? billingInternals.renewalMode(current) : String(body.renewalMode || '').trim(),
+    renewalWindowDays: body.renewalWindowDays === undefined ? billingInternals.renewalWindowDays(current) : int(body.renewalWindowDays, '续费窗口天数', { min: 1 }),
     upstreamId: body.upstreamId === undefined ? (current.upstream_id ?? null) : int(body.upstreamId, '上游账号', { min: 1, nullable: true }),
     upstreamPackageId: body.upstreamPackageId === undefined ? (current.upstream_package_id ?? null) : String(body.upstreamPackageId || '').trim() || null,
   };
+}
+function normalizePurchaseMode(value) {
+  if (value === 'once' || value === 'stack') return value;
+  throw httpError('购买策略无效');
+}
+function normalizeRenewalMode(value) {
+  if (value === 'off' || value === 'anytime' || value === 'window') return value;
+  throw httpError('续费策略无效');
+}
+function normalizePurchaseQty(value, plan) {
+  const max = billingInternals.maxPurchaseQty(plan);
+  const qty = int(value ?? 1, '购买数量', { min: 1 });
+  if (qty > max) throw httpError(`该套餐单次最多购买 ${max} 份`, 409);
+  return qty;
 }
 
 async function validatePlanMapping(db, input) {
@@ -345,7 +416,8 @@ export async function handleBillingApi({ req, url, user, db, billing, readBody }
     if (path === '/user-packages' && req.method === 'POST') {
       const body = await readBody(req); const plan = await db.prepare('SELECT * FROM plans WHERE id = ? AND enabled = 1').get(int(body.planId ?? body.package, '套餐'));
       if (!plan) throw httpError('套餐不存在', 404);
-      const purchased = await purchaseWithBalance(db, billing, { userId: user.id, type: 'plan', productId: plan.id, amountCents: Number(plan.price_cents), metadata: { durationDays: plan.duration_days } });
+      const amount = normalizePurchaseQty(body.amount ?? body.qty ?? 1, plan);
+      const purchased = await purchaseWithBalance(db, billing, { userId: user.id, type: 'plan', productId: plan.id, amountCents: Number(plan.price_cents) * amount, metadata: { durationDays: plan.duration_days * amount, amount } });
       return { compat: true, status: 201, data: { id: purchased.subscriptionId, ...purchased }, action: 'subscription.purchase', resourceId: purchased.subscriptionId };
     }
     if (path === '/user-packages' && req.method === 'PUT') {
@@ -356,7 +428,10 @@ export async function handleBillingApi({ req, url, user, db, billing, readBody }
         if (item.package !== undefined || item.planId !== undefined) changes.push(await changeSubscriptionPlan(db, billing, {
           userId: user.id, subscriptionId: row.id, targetPlanId: int(item.package ?? item.planId, '目标套餐', { min: 1 }),
         }));
-        if (item.autoRenew !== undefined) await db.prepare('UPDATE subscriptions SET auto_renew = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(Number(Boolean(item.autoRenew)), row.id);
+        if (item.autoRenew !== undefined) {
+          if (item.autoRenew && billingInternals.renewalMode(await db.prepare('SELECT p.* FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=?').get(row.id)) === 'off') throw httpError('该套餐禁止续费', 409);
+          await db.prepare('UPDATE subscriptions SET auto_renew = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(Number(Boolean(item.autoRenew)), row.id);
+        }
       }
       return { compat: true, status: 200, data: changes.length ? (changes.length === 1 ? changes[0] : changes) : true,
         ...(changes.length ? { action: 'subscription.plan-change', resourceId: changes.map(item => item.subscriptionId).join(',') } : {}) };
@@ -377,7 +452,10 @@ export async function handleBillingApi({ req, url, user, db, billing, readBody }
         if (body.package !== undefined || body.planId !== undefined) changed = await changeSubscriptionPlan(db, billing, {
           userId: user.id, subscriptionId: sub.id, targetPlanId: int(body.package ?? body.planId, '目标套餐', { min: 1 }),
         });
-        if (body.autoRenew !== undefined) await db.prepare('UPDATE subscriptions SET auto_renew = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(Number(Boolean(body.autoRenew)), sub.id);
+        if (body.autoRenew !== undefined) {
+          if (body.autoRenew && billingInternals.renewalMode(await db.prepare('SELECT p.* FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=?').get(sub.id)) === 'off') throw httpError('该套餐禁止续费', 409);
+          await db.prepare('UPDATE subscriptions SET auto_renew = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(Number(Boolean(body.autoRenew)), sub.id);
+        }
         return { compat: true, status: 200, data: changed || true, ...(changed ? { action: 'subscription.plan-change', resourceId: sub.id } : {}) };
       }
       if (req.method === 'DELETE') { const resources = await billing.subscriptionResourceCounts(user.id, sub.id); if (resources.sites || resources.streams) throw httpError('请先迁移该套餐下的网站和转发', 409); await db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sub.id); if (sub.status === 'pending') await db.prepare("UPDATE orders SET status='cancelled', updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND subscription_id=? AND status='pending'").run(user.id, sub.id); await billing.enforceUser(user.id); return { compat: true, status: 200, data: true, action: 'subscription.cancel', resourceId: sub.id }; }
@@ -449,10 +527,37 @@ export async function handleBillingApi({ req, url, user, db, billing, readBody }
     const path = url.pathname.slice(adminPrefix.length) || '/';
     if (path === '/plans' && req.method === 'GET') return { status: 200, data: { plans: (await db.prepare(`SELECT p.*,ua.name AS upstream_name,up.name AS upstream_package_name FROM plans p
       LEFT JOIN upstream_accounts ua ON ua.id=p.upstream_id LEFT JOIN upstream_packages up ON up.upstream_id=p.upstream_id AND up.package_id=p.upstream_package_id ORDER BY p.sort,p.id`).all()).map(row => ({ ...billingInternals.planPublic(row), upstreamName: row.upstream_name || null, upstreamPackageName: row.upstream_package_name || null })) } };
-    if (path === '/plans' && req.method === 'POST') { const input = adminPlanInput(await readBody(req)); if (!input.code || !input.name) throw httpError('套餐代码和名称必填'); await validatePlanMapping(db, input); const id = (await db.prepare(`INSERT INTO plans (group_id, code, name, description, price_cents, duration_days, domain_limit, traffic_limit_bytes, port_limit, enabled, sort, upstream_id, upstream_package_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(input.groupId, input.code, input.name, input.description, input.priceCents, input.durationDays, input.domainLimit, input.trafficLimitBytes, input.portLimit, input.enabled, input.sort, input.upstreamId, input.upstreamPackageId)).lastInsertRowid; return { status: 201, data: { plan: billingInternals.planPublic(await db.prepare('SELECT * FROM plans WHERE id = ?').get(id)) }, action: 'plan.create', resourceId: id }; }
+    if (path === '/plans' && req.method === 'POST') { const input = adminPlanInput(await readBody(req)); if (!input.code || !input.name) throw httpError('套餐代码和名称必填'); input.purchaseMode = normalizePurchaseMode(input.purchaseMode); input.renewalMode = normalizeRenewalMode(input.renewalMode); await validatePlanMapping(db, input); const id = (await db.prepare(`INSERT INTO plans (group_id, code, name, description, price_cents, duration_days, domain_limit, traffic_limit_bytes, port_limit, enabled, sort, purchase_mode, max_purchase_qty, renewal_mode, renewal_window_days, upstream_id, upstream_package_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(input.groupId, input.code, input.name, input.description, input.priceCents, input.durationDays, input.domainLimit, input.trafficLimitBytes, input.portLimit, input.enabled, input.sort, input.purchaseMode, input.maxPurchaseQty, input.renewalMode, input.renewalWindowDays, input.upstreamId, input.upstreamPackageId)).lastInsertRowid; return { status: 201, data: { plan: billingInternals.planPublic(await db.prepare('SELECT * FROM plans WHERE id = ?').get(id)) }, action: 'plan.create', resourceId: id }; }
     const adminPlan = path.match(/^\/plans\/(\d+)$/);
-    if (adminPlan) { const current = await db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(adminPlan[1])); if (!current) throw httpError('套餐不存在', 404); if (req.method === 'PUT') { const i = adminPlanInput(await readBody(req), current); await validatePlanMapping(db, i); await db.prepare(`UPDATE plans SET group_id=?, code=?, name=?, description=?, price_cents=?, duration_days=?, domain_limit=?, traffic_limit_bytes=?, port_limit=?, enabled=?, sort=?, upstream_id=?,upstream_package_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(i.groupId, i.code, i.name, i.description, i.priceCents, i.durationDays, i.domainLimit, i.trafficLimitBytes, i.portLimit, i.enabled, i.sort, i.upstreamId, i.upstreamPackageId, current.id); await billing.enforceAll({ syncTraffic: false }); return { status: 200, data: { plan: billingInternals.planPublic(await db.prepare('SELECT * FROM plans WHERE id = ?').get(current.id)) }, action: 'plan.update', resourceId: current.id }; } if (req.method === 'DELETE') { await db.prepare('UPDATE plans SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(current.id); return { status: 200, data: { ok: true }, action: 'plan.disable', resourceId: current.id }; } }
+    if (adminPlan) {
+      const current = await db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(adminPlan[1]));
+      if (!current) throw httpError('套餐不存在', 404);
+      if (req.method === 'PUT') {
+        const i = adminPlanInput(await readBody(req), current);
+        i.purchaseMode = normalizePurchaseMode(i.purchaseMode);
+        i.renewalMode = normalizeRenewalMode(i.renewalMode);
+        await validatePlanMapping(db, i);
+        await db.prepare(`UPDATE plans SET group_id=?, code=?, name=?, description=?, price_cents=?, duration_days=?, domain_limit=?, traffic_limit_bytes=?, port_limit=?, enabled=?, sort=?, purchase_mode=?, max_purchase_qty=?, renewal_mode=?, renewal_window_days=?, upstream_id=?,upstream_package_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(i.groupId, i.code, i.name, i.description, i.priceCents, i.durationDays, i.domainLimit, i.trafficLimitBytes, i.portLimit, i.enabled, i.sort, i.purchaseMode, i.maxPurchaseQty, i.renewalMode, i.renewalWindowDays, i.upstreamId, i.upstreamPackageId, current.id);
+        await billing.enforceAll({ syncTraffic: false });
+        return { status: 200, data: { plan: billingInternals.planPublic(await db.prepare('SELECT * FROM plans WHERE id = ?').get(current.id)) }, action: 'plan.update', resourceId: current.id };
+      }
+      if (req.method === 'DELETE') {
+        if (url.searchParams.get('purge') === '1') {
+          const subs = Number((await db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE plan_id=?').get(current.id)).count);
+          if (subs) throw httpError(`套餐仍被 ${subs} 条客户订阅引用，请先取消或改绑后再删除`, 409);
+          const acquisitions = Number((await db.prepare('SELECT COUNT(*) AS count FROM user_plan_acquisitions WHERE plan_id=?').get(current.id)).count);
+          if (acquisitions) throw httpError(`套餐已有 ${acquisitions} 位客户获取记录，不能彻底删除`, 409);
+          const codes = Number((await db.prepare("SELECT COUNT(*) AS count FROM redemption_codes WHERE type='plan' AND product_id=?").get(current.id)).count);
+          if (codes) throw httpError(`套餐仍被 ${codes} 个权益兑换码引用，请先停用这些兑换码后再删除`, 409);
+          await db.prepare('DELETE FROM plans WHERE id=?').run(current.id);
+          return { status: 200, data: { ok: true }, action: 'plan.delete', resourceId: current.id };
+        }
+        await db.prepare('UPDATE plans SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(current.id);
+        return { status: 200, data: { ok: true }, action: 'plan.disable', resourceId: current.id };
+      }
+    }
     if (path === '/groups' && req.method === 'GET') return { status: 200, data: { groups: await db.prepare('SELECT * FROM package_groups ORDER BY sort,id').all() } };
     if (path === '/groups' && req.method === 'POST') { const b = await readBody(req); const name = String(b.name || '').trim(); if (!name) throw httpError('分组名称必填'); const id = (await db.prepare('INSERT INTO package_groups (name, description, sort, enabled) VALUES (?, ?, ?, ?)').run(name, String(b.description || ''), int(b.sort || 0, '排序'), Number(b.enabled !== false))).lastInsertRowid; return { status: 201, data: { id: Number(id) } }; }
     const adminGroup = path.match(/^\/groups\/(\d+)$/);
