@@ -60,10 +60,13 @@ async function fulfillOrder(db, order) {
 }
 
 async function purchaseWithBalance(db, billing, { userId, type, productId, subscriptionId = null, amountCents, metadata = null }) {
-  let orderId; let targetSubscriptionId = subscriptionId; let balanceCents;
+  let orderId; let targetSubscriptionId = subscriptionId; let balanceCents; let acquiredPlanId = null;
   await db.transaction(async transaction => {
-    const wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
-    if (!wallet || Number(wallet.balance_cents) < Number(amountCents)) throw httpError('账户余额不足', 409);
+    let wallet = null;
+    if (type !== 'plan') {
+      wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
+      if (!wallet || Number(wallet.balance_cents) < Number(amountCents)) throw httpError('账户余额不足', 409);
+    }
     let product;
     if (type === 'plan') {
       const plan = await transaction.prepare('SELECT * FROM plans WHERE id=? AND enabled=1').get(productId);
@@ -76,13 +79,18 @@ async function purchaseWithBalance(db, billing, { userId, type, productId, subsc
         if (!upstreamPackage) throw httpError('套餐暂不可购买：绑定的上游套餐不可用', 409);
       }
       const now = new Date();
-      const owned = await billingInternals.livePlanSubscription(transaction, userId, plan.id, { forUpdate: true });
       const mode = billingInternals.purchaseMode(plan);
+      const firstAcquisition = await billingInternals.checkPlanAcquisition(transaction, userId, plan.id);
+      if (mode === 'once' && !firstAcquisition) throw httpError('该套餐每位客户只能购买一次', 409);
+      acquiredPlanId = plan.id;
+      const owned = await billingInternals.livePlanSubscription(transaction, userId, plan.id, { forUpdate: true });
       if (owned && mode === 'once') throw httpError('该套餐每位客户只能购买一次', 409);
       if (owned && mode === 'stack') billingInternals.assertRenewalAllowed(plan, owned, now);
       const qty = normalizePurchaseQty(metadata?.amount ?? 1, plan);
       const durationDays = Number(plan.duration_days) * qty;
       amountCents = Number(plan.price_cents) * qty;
+      wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
+      if (!wallet || Number(wallet.balance_cents) < amountCents) throw httpError('账户余额不足', 409);
       product = { name: plan.name, priceCents: amountCents, durationDays, domainLimit: plan.domain_limit, trafficLimitBytes: plan.traffic_limit_bytes, portLimit: plan.port_limit, purchaseMode: mode, amount: qty };
       if (owned && mode === 'stack') {
         const previousEndsAt = owned.ends_at;
@@ -117,6 +125,7 @@ async function purchaseWithBalance(db, billing, { userId, type, productId, subsc
     await fulfillOrder(transaction, order);
     await transaction.prepare("UPDATE orders SET status='paid', paid_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
       .run(new Date().toISOString(), orderId);
+    if (acquiredPlanId) await billingInternals.recordPlanAcquisition(transaction, userId, acquiredPlanId);
   });
   await billing.updateLegacySiteLimit(userId);
   await billing.enforceUser(userId, { syncTraffic: false });
@@ -179,6 +188,7 @@ async function quoteSubscriptionPlan(db, userId, subscriptionId, targetPlanId) {
 async function changeSubscriptionPlan(db, billing, { userId, subscriptionId, targetPlanId }) {
   let result;
   await db.transaction(async transaction => {
+    await transaction.prepare('SELECT id FROM users WHERE id=? FOR UPDATE').get(Number(userId));
     const subscription = await transaction.prepare(`SELECT s.*, p.name AS plan_name, p.price_cents, p.duration_days,
       p.domain_limit, p.traffic_limit_bytes, p.port_limit
       FROM subscriptions s JOIN plans p ON p.id=s.plan_id
@@ -198,6 +208,10 @@ async function changeSubscriptionPlan(db, billing, { userId, subscriptionId, tar
 
     const targetPlan = await transaction.prepare('SELECT * FROM plans WHERE id=?').get(Number(targetPlanId));
     if (!targetPlan || !Number(targetPlan.enabled)) throw httpError('目标套餐不存在或已停用', 404);
+    const firstAcquisition = await billingInternals.checkPlanAcquisition(transaction, userId, targetPlan.id);
+    if (billingInternals.purchaseMode(targetPlan) === 'once' && !firstAcquisition) {
+      throw httpError('该套餐每位客户只能获取一次', 409);
+    }
     const quote = planChangeQuote(subscription, targetPlan);
     const wallet = await transaction.prepare('SELECT * FROM wallets WHERE user_id=? FOR UPDATE').get(userId);
     if (quote.diffPriceCents > 0 && (!wallet || Number(wallet.balance_cents) < quote.diffPriceCents)) throw httpError('账户余额不足', 409);
@@ -226,6 +240,7 @@ async function changeSubscriptionPlan(db, billing, { userId, subscriptionId, tar
     await transaction.prepare(`UPDATE subscriptions SET plan_id=?, upstream_id=?, upstream_package_id=?,
       renewal_failed_at=NULL, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .run(targetPlan.id, targetPlan.upstream_id, targetPlan.upstream_package_id, subscription.id);
+    await billingInternals.recordPlanAcquisition(transaction, userId, targetPlan.id);
     result = { idempotent: false, orderId, subscriptionId: subscription.id, planId: Number(targetPlan.id),
       balanceCents: changed.balanceCents, ...publicQuote };
   });
@@ -254,9 +269,29 @@ async function refundOrder(db, billing, orderId) {
       await transaction.prepare("UPDATE subscriptions SET status='cancelled', auto_renew=0, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").run(order.subscription_id, order.user_id);
     } else if (order.type === 'renewal') {
       if (!metadata.previousEndsAt) throw httpError('该历史续费订单缺少可回滚快照', 409);
-      const status = new Date(metadata.previousEndsAt) > new Date() ? 'active' : 'expired';
+      const subscription = await transaction.prepare('SELECT ends_at FROM subscriptions WHERE id=? AND user_id=? FOR UPDATE')
+        .get(order.subscription_id, order.user_id);
+      if (!subscription) throw httpError('续费对应的客户套餐不存在', 409);
+      const currentEndsAt = new Date(subscription.ends_at);
+      const previousEndsAt = new Date(metadata.previousEndsAt);
+      const orderEndsAt = new Date(metadata.endsAt || 0);
+      const durationDays = Number(metadata.durationDays);
+      if (!Number.isFinite(currentEndsAt.getTime()) || !Number.isFinite(previousEndsAt.getTime())) {
+        throw httpError('该续费订单的有效期快照无效', 409);
+      }
+      let nextEndsAt;
+      if (Number.isFinite(orderEndsAt.getTime()) && currentEndsAt.getTime() === orderEndsAt.getTime()) {
+        nextEndsAt = previousEndsAt;
+      } else if (Number.isFinite(durationDays) && durationDays > 0) {
+        nextEndsAt = new Date(currentEndsAt.getTime() - durationDays * DAY_MS);
+      } else if (Number.isFinite(orderEndsAt.getTime()) && orderEndsAt > previousEndsAt) {
+        nextEndsAt = new Date(currentEndsAt.getTime() - (orderEndsAt.getTime() - previousEndsAt.getTime()));
+      } else {
+        throw httpError('该历史续费订单缺少可回滚时长', 409);
+      }
+      const status = nextEndsAt > new Date() ? 'active' : 'expired';
       await transaction.prepare('UPDATE subscriptions SET ends_at=?, status=?, auto_renew=0, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?')
-        .run(metadata.previousEndsAt, status, order.subscription_id, order.user_id);
+        .run(nextEndsAt.toISOString(), status, order.subscription_id, order.user_id);
     } else if (order.type === 'upgrade') {
       const row = await transaction.prepare('SELECT amount FROM subscription_upgrades WHERE subscription_id=? AND upgrade_id=?').get(order.subscription_id, order.product_id);
       const amount = Number(metadata.amount || 1);
@@ -512,6 +547,8 @@ export async function handleBillingApi({ req, url, user, db, billing, readBody }
         if (url.searchParams.get('purge') === '1') {
           const subs = Number((await db.prepare('SELECT COUNT(*) AS count FROM subscriptions WHERE plan_id=?').get(current.id)).count);
           if (subs) throw httpError(`套餐仍被 ${subs} 条客户订阅引用，请先取消或改绑后再删除`, 409);
+          const acquisitions = Number((await db.prepare('SELECT COUNT(*) AS count FROM user_plan_acquisitions WHERE plan_id=?').get(current.id)).count);
+          if (acquisitions) throw httpError(`套餐已有 ${acquisitions} 位客户获取记录，不能彻底删除`, 409);
           const codes = Number((await db.prepare("SELECT COUNT(*) AS count FROM redemption_codes WHERE type='plan' AND product_id=?").get(current.id)).count);
           if (codes) throw httpError(`套餐仍被 ${codes} 个权益兑换码引用，请先停用这些兑换码后再删除`, 409);
           await db.prepare('DELETE FROM plans WHERE id=?').run(current.id);

@@ -301,15 +301,21 @@ test('兑换码原子发放套餐且不泄露完整码或允许同租户重复�
   const f = await fixture(); const base = await start(f); t.after(() => { f.server.close(); f.db.close(); });
   const admin = await login(base, 'admin', 'admin-password'); const alice = await login(base, 'alice', 'alice-password'); const bob = await login(base, 'bob', 'bobby-password');
   const plan = f.db.prepare("SELECT id FROM plans WHERE code='standard'").get();
-  const created = await request(base, '/api/admin/billing/redemption-codes', admin.cookie, 'POST', { type: 'plan', productId: plan.id, count: 1, maxUses: 2, label: '活动码' });
-  assert.equal(created.status, 201); const code = (await created.json()).codes[0].code;
+  f.db.prepare("UPDATE plans SET purchase_mode='once' WHERE id=?").run(plan.id);
+  const created = await request(base, '/api/admin/billing/redemption-codes', admin.cookie, 'POST', { type: 'plan', productId: plan.id, count: 2, maxUses: 2, label: '活动码' });
+  assert.equal(created.status, 201); const generated = (await created.json()).codes; const code = generated[0].code;
   const list = await (await request(base, '/api/admin/billing/redemption-codes', admin.cookie)).json();
   assert.equal(list.codes[0].code, undefined); assert.equal(list.codes[0].codeHash, undefined);
   assert.equal((await request(base, '/api/billing/redeem', alice.cookie, 'POST', { code })).status, 200);
   assert.equal((await f.billing.activeSubscription(f.ids.alice)).plan_id, plan.id);
   assert.equal((await request(base, '/api/billing/redeem', alice.cookie, 'POST', { code })).status, 409);
+  const subscription = f.db.prepare('SELECT id FROM subscriptions WHERE user_id=? AND plan_id=?').get(f.ids.alice, plan.id);
+  f.db.prepare("UPDATE subscriptions SET status='expired', ends_at=? WHERE id=?")
+    .run(new Date(Date.now() - 86400_000).toISOString(), subscription.id);
+  assert.equal((await request(base, '/api/billing/redeem', alice.cookie, 'POST', { code: generated[1].code })).status, 409);
   assert.equal((await request(base, '/api/billing/redeem', bob.cookie, 'POST', { code })).status, 200);
-  assert.equal(f.db.prepare('SELECT used_count FROM redemption_codes WHERE id=?').get(list.codes[0].id).used_count, 2);
+  assert.equal(f.db.prepare('SELECT used_count FROM redemption_codes WHERE id=?').get(generated[0].id).used_count, 2);
+  assert.equal(f.db.prepare('SELECT used_count FROM redemption_codes WHERE id=?').get(generated[1].id).used_count, 0);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS count FROM orders WHERE channel='redemption' AND status='paid'").get().count, 2);
 });
 

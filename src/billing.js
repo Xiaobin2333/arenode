@@ -76,6 +76,18 @@ async function livePlanSubscription(db, userId, planId, { forUpdate = false } = 
     ORDER BY ends_at DESC, id DESC LIMIT 1${lock}`).get(userId, planId, now, now) || null;
 }
 
+async function checkPlanAcquisition(db, userId, planId) {
+  await db.prepare('SELECT id FROM users WHERE id=? FOR UPDATE').get(Number(userId));
+  const existing = await db.prepare('SELECT 1 FROM user_plan_acquisitions WHERE user_id=? AND plan_id=?')
+    .get(Number(userId), Number(planId));
+  return !existing;
+}
+
+async function recordPlanAcquisition(db, userId, planId) {
+  await db.prepare(`INSERT INTO user_plan_acquisitions (user_id, plan_id) VALUES (?, ?)
+    ON CONFLICT(user_id, plan_id) DO NOTHING`).run(Number(userId), Number(planId));
+}
+
 function planPublic(row) {
   if (!row) return null;
   return {
@@ -97,17 +109,20 @@ function usageRows(data, resourceIds) {
 }
 
 export async function seedBilling(db) {
+  const initialized = await db.prepare("SELECT value FROM app_settings WHERE key='billing_catalog_initialized'").get();
+  if (initialized) return;
   let group = await db.prepare('SELECT * FROM package_groups ORDER BY id LIMIT 1').get();
-  if (!group) {
+  const existing = Number((await db.prepare('SELECT COUNT(*) AS count FROM plans').get()).count);
+  if (!group && !existing) {
     const id = (await db.prepare(`INSERT INTO package_groups (name, description, sort, enabled) VALUES ('套餐资源', 'CDN 加速套餐', 10, 1)`).run()).lastInsertRowid;
     group = await db.prepare('SELECT * FROM package_groups WHERE id = ?').get(id);
+    const insert = db.prepare(`INSERT OR IGNORE INTO plans
+      (group_id, code, name, price_cents, duration_days, domain_limit, traffic_limit_bytes, port_limit, enabled, sort)
+      VALUES (?, ?, ?, ?, 30, ?, ?, ?, 1, ?)`);
+    for (const [code, name, price, domains, traffic, ports, sort] of DEFAULT_PLANS) await insert.run(group.id, code, name, price, domains, traffic, ports, sort);
   }
-  const existing = Number((await db.prepare('SELECT COUNT(*) AS count FROM plans').get()).count);
-  if (existing) return;
-  const insert = db.prepare(`INSERT OR IGNORE INTO plans
-    (group_id, code, name, price_cents, duration_days, domain_limit, traffic_limit_bytes, port_limit, enabled, sort)
-    VALUES (?, ?, ?, ?, 30, ?, ?, ?, 1, ?)`);
-  for (const [code, name, price, domains, traffic, ports, sort] of DEFAULT_PLANS) await insert.run(group.id, code, name, price, domains, traffic, ports, sort);
+  await db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('billing_catalog_initialized', '1', CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP`).run();
 }
 
 export class BillingService {
@@ -147,34 +162,40 @@ export class BillingService {
   }
 
   async assignPlan(userId, planId, { status = 'active', startsAt = new Date(), endsAt = null } = {}) {
-    const user = await this.db.prepare("SELECT id FROM users WHERE id = ? AND role = 'user'").get(Number(userId));
-    if (!user) throw Object.assign(new Error('客户不存在'), { status: 404 });
-    const plan = await this.db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(planId));
-    if (!plan) throw Object.assign(new Error('套餐不存在'), { status: 404 });
     if (!['active', 'suspended'].includes(status)) throw new Error('套餐状态无效');
     const start = new Date(startsAt);
     if (!Number.isFinite(start.getTime())) throw new Error('套餐有效期无效');
-    if (this.upstreams && (!plan.upstream_id || !plan.upstream_package_id)) throw Object.assign(new Error('套餐未绑定可用的上游套餐'), { status: 409 });
-    const owned = await livePlanSubscription(this.db, userId, plan.id);
-    const mode = purchaseMode(plan);
-    if (owned) {
-      if (mode === 'once') throw Object.assign(new Error('该套餐每位客户只能持有一份'), { status: 409 });
-      assertRenewalAllowed(plan, owned);
-      const now = new Date();
-      const end = endsAt ? new Date(endsAt) : addDays(stackBaseDate(owned, now), plan.duration_days);
-      if (!Number.isFinite(end.getTime()) || end <= now) throw new Error('套餐有效期无效');
-      await this.db.prepare(`UPDATE subscriptions SET status=?, ends_at=?, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-        .run(status, end.toISOString(), owned.id);
-      await this.updateLegacySiteLimit(userId);
-      return Number(owned.id);
-    }
-    const end = endsAt ? new Date(endsAt) : addDays(start, plan.duration_days);
-    if (!Number.isFinite(end.getTime()) || end <= start) throw new Error('套餐有效期无效');
-    const id = (await this.db.prepare(`INSERT INTO subscriptions
-      (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(userId, plan.id, status, start.toISOString(), end.toISOString(), plan.upstream_id, plan.upstream_package_id)).lastInsertRowid;
+    let id;
+    await this.db.transaction(async transaction => {
+      const user = await transaction.prepare("SELECT id FROM users WHERE id = ? AND role = 'user'").get(Number(userId));
+      if (!user) throw Object.assign(new Error('客户不存在'), { status: 404 });
+      const plan = await transaction.prepare('SELECT * FROM plans WHERE id = ?').get(Number(planId));
+      if (!plan) throw Object.assign(new Error('套餐不存在'), { status: 404 });
+      if (this.upstreams && (!plan.upstream_id || !plan.upstream_package_id)) throw Object.assign(new Error('套餐未绑定可用的上游套餐'), { status: 409 });
+      const firstAcquisition = await checkPlanAcquisition(transaction, userId, plan.id);
+      const mode = purchaseMode(plan);
+      if (mode === 'once' && !firstAcquisition) throw Object.assign(new Error('该套餐每位客户只能获取一次'), { status: 409 });
+      const owned = await livePlanSubscription(transaction, userId, plan.id, { forUpdate: true });
+      if (owned) {
+        if (mode === 'once') throw Object.assign(new Error('该套餐每位客户只能获取一次'), { status: 409 });
+        assertRenewalAllowed(plan, owned);
+        const now = new Date();
+        const end = endsAt ? new Date(endsAt) : addDays(stackBaseDate(owned, now), plan.duration_days);
+        if (!Number.isFinite(end.getTime()) || end <= now) throw new Error('套餐有效期无效');
+        await transaction.prepare(`UPDATE subscriptions SET status=?, ends_at=?, grace_ends_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(status, end.toISOString(), owned.id);
+        id = Number(owned.id);
+      } else {
+        const end = endsAt ? new Date(endsAt) : addDays(start, plan.duration_days);
+        if (!Number.isFinite(end.getTime()) || end <= start) throw new Error('套餐有效期无效');
+        id = Number((await transaction.prepare(`INSERT INTO subscriptions
+          (user_id, plan_id, status, starts_at, ends_at, upstream_id, upstream_package_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(userId, plan.id, status, start.toISOString(), end.toISOString(), plan.upstream_id, plan.upstream_package_id)).lastInsertRowid);
+      }
+      await recordPlanAcquisition(transaction, userId, plan.id);
+    });
     await this.updateLegacySiteLimit(userId);
-    return Number(id);
+    return id;
   }
 
   async activeSubscriptions(userId) {
@@ -566,4 +587,4 @@ export class BillingService {
   }
 }
 
-export const billingInternals = { DEFAULT_PLANS, periodKey, monthRange, domainCount, planPublic, purchaseMode, maxPurchaseQty, renewalMode, renewalWindowDays, assertRenewalAllowed, stackBaseDate, livePlanSubscription, addDays };
+export const billingInternals = { DEFAULT_PLANS, periodKey, monthRange, domainCount, planPublic, purchaseMode, maxPurchaseQty, renewalMode, renewalWindowDays, assertRenewalAllowed, stackBaseDate, livePlanSubscription, checkPlanAcquisition, recordPlanAcquisition, addDays };
