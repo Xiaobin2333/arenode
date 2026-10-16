@@ -60,9 +60,10 @@ class AsyncStatement {
 }
 
 class PostgresDatabase {
-  constructor(pool, executor = pool) {
+  constructor(pool, executor = pool, advisory = null) {
     this.pool = pool;
     this.executor = executor;
+    this.advisory = advisory;
     this.isMemory = false;
   }
 
@@ -76,7 +77,7 @@ class PostgresDatabase {
 
   async transaction(callback) {
     const client = await this.pool.connect();
-    const scoped = new PostgresDatabase(this.pool, client);
+    const scoped = new PostgresDatabase(this.pool, client, this.advisory);
     try {
       await client.query('BEGIN');
       const result = await callback(scoped);
@@ -96,19 +97,25 @@ class PostgresDatabase {
   }
 
   async withAdvisoryLock(key, callback) {
-    const client = await this.pool.connect();
+    // Long-lived locks must not consume the connections needed by callbacks.
+    // Refuse excess/nested contention instead of waiting for a lock-pool slot.
+    if (this.advisory.active >= 12) return { acquired: false, value: null };
+    this.advisory.active += 1;
+    let client;
     try {
+      client = await this.advisory.pool.connect();
       const locked = (await client.query('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [String(key)])).rows[0]?.locked;
       if (!locked) return { acquired: false, value: null };
       try { return { acquired: true, value: await callback() }; }
       finally { await client.query('SELECT pg_advisory_unlock(hashtext($1))', [String(key)]); }
     } finally {
-      client.release();
+      client?.release();
+      this.advisory.active -= 1;
     }
   }
 
   async close() {
-    await this.pool.end();
+    await Promise.all([this.pool.end(), this.advisory.pool.end()]);
   }
 }
 
@@ -251,7 +258,8 @@ async function migratePlanAcquisitions(db) {
 export async function createPostgresDatabase(connectionString) {
   if (!connectionString) throw new Error('DATABASE_URL 未配置');
   const pool = new pg.Pool({ connectionString, max: 12, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 8_000 });
-  const db = new PostgresDatabase(pool);
+  const lockPool = new pg.Pool({ connectionString, max: 12, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 8_000 });
+  const db = new PostgresDatabase(pool, pool, { pool: lockPool, active: 0 });
   await db.exec(SCHEMA);
   await migratePlanAcquisitions(db);
   await migrateBrandDefaults(db);

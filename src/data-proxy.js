@@ -1,5 +1,6 @@
 import { isIP } from 'node:net';
 import { tenantProxyInternals } from './tenant-proxy.js';
+import { withResourceMutation } from './resource-mutation.js';
 
 const BLOCKED_QUERY = new Set(['uid', 'user_id', 'owner_id', 'receive', 'user_package', 'action']);
 const URL_JOB_TYPES = new Set(['clean_url', 'clean_dir', 'pre_cache_url']);
@@ -263,6 +264,7 @@ async function allowedStreamPorts(db, userId) {
 }
 
 async function refreshStreamPorts(db, cdnfly, userId, upstreams = null, requestedPorts = null) {
+  return withResourceMutation(db, userId, async () => {
   const mappings = await ownedStreamMappings(db, userId);
   const requested = requestedPorts instanceof Set ? requestedPorts : new Set((requestedPorts || []).map(Number));
   const scoped = requested.size
@@ -275,6 +277,7 @@ async function refreshStreamPorts(db, cdnfly, userId, upstreams = null, requeste
     const detail = await tenantProxyInternals.resourceDetail(client, 'streams', mapping.upstream_id, mapping);
     await tenantProxyInternals.syncStreamPorts(db, mapping.id, detail);
   }));
+  });
 }
 
 async function scopePorts(url, db, userId) {

@@ -103,6 +103,28 @@ test('四层端口别名、未知结构和不完整清单不能证明归属，�
   assert.deepEqual(await read(), []);
 });
 
+test('四层 GET 刷新读取与用量写回期间禁止资源修改', async t => {
+  const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); }); const base = await start(f);
+  const cookie = await login(base, 'alice', 'alice-password');
+  const original = f.cdnfly.request;
+  for (const path of [`/streams/${f.ids.streamAlice}`, '/monitor/stream/realtime?type=traffic']) {
+    const captured = Promise.withResolvers(); const release = Promise.withResolvers();
+    f.cdnfly.request = async (method, upstreamPath, body) => {
+      if (method === 'GET' && upstreamPath === '/v1/streams/stream-a') {
+        captured.resolve(); await release.promise;
+        return { id: 'stream-a', listen: [{ port: 8443, protocol: 'tcp' }] };
+      }
+      return original(method, upstreamPath, body);
+    };
+    const refreshing = request(base, `/api/cdnfly/v1${path}`, cookie);
+    await captured.promise;
+    try {
+      assert.equal((await request(base, `/api/cdnfly/v1/streams/${f.ids.streamAlice}`, cookie, 'PUT', { listen: [{ port: 8443, protocol: 'tcp' }, { port: 8444, protocol: 'tcp' }] })).status, 409);
+    } finally { release.resolve(); }
+    assert.equal((await refreshing).status, 200);
+  }
+});
+
 test('访问日志按当前租户域名过滤，详情需要列表授权', async t => {
   const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); }); const base = await start(f);
   const cookie = await login(base, 'alice', 'alice-password');

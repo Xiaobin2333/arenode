@@ -1409,7 +1409,9 @@ async function updateCollection({ db, cdnfly, upstreams, billing, kind, user, bo
 export async function handleTenantProxy(options) {
   const { req, url, user, db } = options;
   normalizeCdnflyUrl(url);
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && /^\/api\/cdnfly\/v1\/(sites|streams)(\/|$)/.test(url.pathname)) {
+  const resourceWrite = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && /^\/api\/cdnfly\/v1\/(sites|streams)(\/|$)/.test(url.pathname);
+  const streamRefresh = req.method === 'GET' && /^\/api\/cdnfly\/v1\/streams(\/|$)/.test(url.pathname);
+  if (resourceWrite || streamRefresh) {
     return withResourceMutation(db, user.id, () => handleTenantProxyUnlocked(options));
   }
   return handleTenantProxyUnlocked(options);

@@ -61,4 +61,17 @@ test('PostgreSQL persists failed code attempts across all verification flows', {
     });
   } finally { resume.resolve(); await refresh; }
   assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM stream_ports WHERE resource_id=?').get(stream)).count, 1);
+
+  const allLocked = Promise.withResolvers(); const releaseLocks = Promise.withResolvers(); let entered = 0;
+  const mutations = Array.from({ length: 12 }, (_, index) => db.withAdvisoryLock(`pool-test:${suffix}:${index}`, async () => {
+    if (++entered === 12) allLocked.resolve();
+    await releaseLocks.promise;
+    return (await db.prepare('SELECT 1 AS value').get()).value;
+  }));
+  await allLocked.promise;
+  try {
+    assert.equal((await db.prepare('SELECT 1 AS value').get()).value, 1);
+    assert.equal((await db.withAdvisoryLock(`pool-overflow:${suffix}`, () => assert.fail('overflow admitted'))).acquired, false);
+  } finally { releaseLocks.resolve(); }
+  assert.ok((await Promise.all(mutations)).every(result => result.acquired && result.value === 1));
 });
