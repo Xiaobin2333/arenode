@@ -1416,10 +1416,10 @@ export async function handleTenantProxy(options) {
     return withResourceMutation(db, user.id, async () => {
       if (resourceWrite && /\/sites(\/|$)/.test(url.pathname)) {
         const suffix = url.pathname.split('/sites')[1];
-        if (suffix) await assertNoPolicyHold(db, suffix.split('/')[1].split(',').filter(id => /^\d+$/.test(id)));
+        if (suffix) await assertNoPolicyHold(db, suffix.split('/')[1].split(',').filter(id => /^\d+$/.test(id)), user.id);
         else if (req.method === 'PUT') {
           const body = await options.readBody(req);
-          if (Array.isArray(body)) await assertNoPolicyHold(db, body.map(item => item.id));
+          if (Array.isArray(body)) await assertNoPolicyHold(db, body.map(item => item.id), user.id);
           options = { ...options, readBody: async () => body };
         }
       }

@@ -138,6 +138,8 @@ test('manual review default, threshold auto-disable, holds block tenant/admin wr
   await service.run('job-2', { ...policy, autoDisable: true, threshold: .99 }, siteId); assert.equal(calls.length, 0);
   await service.run('job-3', { ...policy, autoDisable: true }, siteId); assert.equal(calls.length, 1);
   await assert.rejects(assertNoPolicyHold(db, [siteId]), /隔离/);
+  await assertNoPolicyHold(db, [siteId, 'invalid-id'], user.id + 999);
+  await assert.rejects(handleTenantProxy({ req: { method: 'PUT' }, url: new URL(`http://localhost/api/cdnfly/v1/sites/${siteId}`), user: { ...user, id: user.id + 999, role: 'user' }, db, cdnfly, readBody: async () => ({ enable: 1 }) }), { status: 404 });
   await assert.rejects(handleTenantProxy({ req: { method: 'PUT' }, url: new URL(`http://localhost/api/cdnfly/v1/sites/${siteId}`), user: { ...user, role: 'user' }, db, cdnfly, readBody: async () => ({ enable: 1 }) }), /隔离/);
   await assert.rejects(handleTenantProxy({ req: { method: 'PUT' }, url: new URL('http://localhost/api/cdnfly/v1/sites'), user: { ...user, role: 'user' }, db, cdnfly, readBody: async () => [{ id: siteId, enable: 1 }] }), /隔离/);
   await assert.rejects(handleAdminApi({ req: { method: 'PUT' }, url: new URL(`http://localhost/api/admin/sites/${siteId}`), user, db, cdnfly, readBody: async () => ({ enabled: true }) }), /隔离/);

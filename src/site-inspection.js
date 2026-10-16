@@ -3,8 +3,14 @@ import { fetchPublicPage } from './inspection-fetch.js';
 import { categories, opError } from './operations-settings.js';
 import { withResourceMutation } from './resource-mutation.js';
 
-export async function assertNoPolicyHold(db, ids) {
-  for (const id of ids) if (await db.prepare('SELECT site_id FROM site_policy_holds WHERE site_id=?').get(Number(id))) throw opError('网站已被巡查隔离，请由超级管理员审核后重新启用', 409);
+export async function assertNoPolicyHold(db, ids, ownerId = null) {
+  for (const value of ids) {
+    const id = Number(value);
+    if (!Number.isSafeInteger(id) || id < 1) continue;
+    // Leave nonexistent/foreign IDs to the route's ownership validation.
+    if (ownerId !== null && !await db.prepare('SELECT id FROM sites WHERE id=? AND owner_id=?').get(id, ownerId)) continue;
+    if (await db.prepare('SELECT site_id FROM site_policy_holds WHERE site_id=?').get(id)) throw opError('网站已被巡查隔离，请由超级管理员审核后重新启用', 409);
+  }
 }
 export function validateVerdict(data, pages) {
   if (!data || !['clean', 'uncertain', ...categories].includes(data.category) || typeof data.confidence !== 'number'
@@ -39,6 +45,7 @@ export class SiteInspection {
     Object.assign(this, { db, upstreams, cdnfly, billing, fetchPage, classify });
   }
   async action(siteId, inspectionId, action, reason, actorId = null, expectedSite = null) {
+    if (!Number.isSafeInteger(siteId) || siteId < 1 || !['disable', 'enable', 'approve'].includes(action)) throw opError('审核操作或网站 ID 无效');
     const initial = await this.db.prepare('SELECT * FROM sites WHERE id=?').get(siteId);
     if (!initial) throw opError('网站不存在', 404);
     return withResourceMutation(this.db, initial.owner_id, async () => {
