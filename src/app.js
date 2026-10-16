@@ -1,5 +1,6 @@
 import { handleRecoveryApi } from './recovery.js';
 import fs from 'node:fs';
+import { withResourceMutation } from './resource-mutation.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newSessionToken, tokenDigest, verifyPassword, hashPassword, validateUsername } from './security.js';
@@ -694,6 +695,7 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
 
         if (url.pathname === '/api/sites' && req.method === 'POST') {
           const body = await readBody(req);
+          return await withResourceMutation(db, user.id, async () => {
           const requestedGroupId = body.groupId === '' || body.groupId === null || body.groupId === undefined ? null : Number(body.groupId);
           if (requestedGroupId !== null && (!Number.isInteger(requestedGroupId) || !await db.prepare('SELECT id FROM customer_site_groups WHERE id=? AND user_id=?').get(requestedGroupId, user.id))) {
             return json(res, 404, { error: '网站分组不存在' });
@@ -731,6 +733,7 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
             await db.prepare('DELETE FROM sites WHERE id = ?').run(pending.lastInsertRowid);
             throw error;
           }
+          });
         }
 
         const siteMatch = url.pathname.match(/^\/api\/sites\/(\d+)$/);
@@ -753,6 +756,9 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
           }
           if (req.method === 'PUT') {
             const body = await readBody(req); const input = validateSiteInput(body, true);
+            return await withResourceMutation(db, user.id, async () => {
+            const site = await ownedSite(db, siteMatch[1], user);
+            if (!site) return json(res, 404, { error: '站点不存在' });
             delete input.domain;
             let localGroupId = site.local_group_id;
             if (Object.hasOwn(body, 'groupId')) {
@@ -784,6 +790,7 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
             if (billing) await billing.enforceUser(user.id, { syncTraffic: false });
             await audit(db, user.id, 'site.update', 'site', site.id, Object.keys(input), req);
             return json(res, 200, { site: presentSite(await db.prepare(`SELECT s.*, p.name AS plan_name FROM sites s LEFT JOIN subscriptions sub ON sub.id=s.subscription_id LEFT JOIN plans p ON p.id=sub.plan_id WHERE s.id = ?`).get(site.id)) });
+            });
           }
           if (req.method === 'DELETE') {
             if (site.enabled) return json(res, 409, { error: '请先停用站点再删除' });

@@ -20,7 +20,7 @@
     "test:real": "RUN_REAL_CDNFLY_TESTS=1 node --test test/real-upstream-smoke.test.js"
   },
   "dependencies": {
-    "nodemailer": "^10.1.1",
+    "nodemailer": "^10.1.2",
     "pg": "^8.16.3",
     "redis": "^5.8.1"
   },

@@ -70,13 +70,13 @@ export async function verifyRegistration({ db, config, billing, body }) {
   if (replacesPendingIdentity && (body.username === undefined || body.password === undefined)) throw httpError('用户名和密码必须同时提供');
   const suppliedUsername = replacesPendingIdentity ? validateUsername(body.username) : null;
   const suppliedPasswordHash = replacesPendingIdentity ? hashPassword(body.password || '') : null;
-  await db.transaction(async transaction => {
+  const invalid = await db.transaction(async transaction => {
     const pending = await transaction.prepare('SELECT * FROM pending_registrations WHERE email=? FOR UPDATE').get(email);
     if (!pending || new Date(pending.expires_at) <= new Date()) throw httpError('验证码已过期，请重新获取', 409);
     if (pending.attempts >= 5) throw httpError('验证码尝试次数过多，请重新获取', 429);
     if (pending.code_hash !== codeDigest(config, email, code)) {
       await transaction.prepare('UPDATE pending_registrations SET attempts=attempts+1 WHERE email=?').run(email);
-      throw httpError('验证码错误', 400);
+      return true;
     }
     const username = suppliedUsername || pending.username;
     const passwordHash = suppliedPasswordHash || pending.password_hash;
@@ -90,6 +90,7 @@ export async function verifyRegistration({ db, config, billing, body }) {
     await transaction.prepare('INSERT INTO wallets (user_id, balance_cents) VALUES (?, 0) ON CONFLICT(user_id) DO NOTHING').run(customer.id);
     await transaction.prepare('DELETE FROM pending_registrations WHERE email=?').run(email);
   });
+  if (invalid) throw httpError('验证码错误', 400);
   await billing?.updateLegacySiteLimit(customer.id);
   return customer;
 }
@@ -123,18 +124,19 @@ export async function requestPasswordReset({ db, config, mailer, settings, body 
 
 export async function resetPassword({ db, config, body }) {
   const email = normalizeEmail(body.email); const code = validateCode(body.code);
-  await db.transaction(async transaction => {
+  const invalid = await db.transaction(async transaction => {
     const token = await transaction.prepare('SELECT * FROM password_reset_tokens WHERE email=? FOR UPDATE').get(email);
     if (!token || new Date(token.expires_at) <= new Date()) throw httpError('验证码已过期，请重新获取', 409);
     if (token.attempts >= 5) throw httpError('验证码尝试次数过多，请重新获取', 429);
     if (token.code_hash !== codeDigest(config, email, code)) {
       await transaction.prepare('UPDATE password_reset_tokens SET attempts=attempts+1 WHERE email=?').run(email);
-      throw httpError('验证码错误');
+      return true;
     }
     await transaction.prepare('UPDATE users SET password_hash=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(hashPassword(body.newPassword || ''), token.user_id);
     await transaction.prepare('DELETE FROM sessions WHERE user_id=?').run(token.user_id);
     await transaction.prepare('DELETE FROM password_reset_tokens WHERE email=?').run(email);
   });
+  if (invalid) throw httpError('验证码错误');
   return { ok: true };
 }
 
@@ -180,19 +182,20 @@ export async function requestEmailChange({ db, config, mailer, settings, user, b
 
 export async function confirmEmailChange({ db, config, user, body }) {
   const code = validateCode(body.code); let email;
-  await db.transaction(async transaction => {
+  const invalid = await db.transaction(async transaction => {
     const token = await transaction.prepare('SELECT * FROM email_change_tokens WHERE user_id=? FOR UPDATE').get(user.id);
     if (!token || new Date(token.expires_at) <= new Date()) throw httpError('验证码已过期，请重新获取', 409);
     if (Number(token.attempts) >= 5) throw httpError('验证码尝试次数过多，请重新获取', 429);
     if (token.code_hash !== codeDigest(config, token.email, code)) {
       await transaction.prepare('UPDATE email_change_tokens SET attempts=attempts+1 WHERE user_id=?').run(user.id);
-      throw httpError('验证码错误');
+      return true;
     }
     await assertEmailAvailable(transaction, token.email, user.id); email = token.email;
     await transaction.prepare('UPDATE users SET email=?,email_verified_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(email, user.id);
     await transaction.prepare('DELETE FROM email_change_tokens WHERE user_id=?').run(user.id);
     await transaction.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
   });
+  if (invalid) throw httpError('验证码错误');
   return { email, verificationRequired: true, relogin: true };
 }
 

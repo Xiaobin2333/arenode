@@ -1,4 +1,5 @@
 import { resolveCname as resolveDnsCname } from 'node:dns/promises';
+import { withResourceMutation } from './resource-mutation.js';
 import { validateDomain, validateOrigin } from './validation.js';
 import { normalizeCdnflyUrl } from './compat-path.js';
 import { ensureCustomerUpstreamGroups } from './customer-groups.js';
@@ -1057,9 +1058,13 @@ async function syncStreamPorts(db, localId, record) {
   if (record?.enable !== undefined) await db.prepare('UPDATE tenant_resources SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(Number(Boolean(record.enable)), localId);
   if (!Array.isArray(record?.listen)) return;
   const ports = [...new Set(record.listen.map(item => Number(item?.port)).filter(port => Number.isInteger(port) && port > 0 && port <= 65535))];
-  await db.prepare('DELETE FROM stream_ports WHERE resource_id = ?').run(localId);
-  const insert = db.prepare('INSERT INTO stream_ports (resource_id, port) VALUES (?, ?)');
-  for (const port of ports) await insert.run(localId, port);
+  await db.transaction(async transaction => {
+    // Readers must see the previous or next complete usage, never an empty gap.
+    await transaction.prepare('SELECT id FROM tenant_resources WHERE id=? FOR UPDATE').get(localId);
+    await transaction.prepare('DELETE FROM stream_ports WHERE resource_id = ?').run(localId);
+    const insert = transaction.prepare('INSERT INTO stream_ports (resource_id, port) VALUES (?, ?)');
+    for (const port of ports) await insert.run(localId, port);
+  });
 }
 
 function countDomains(value) { return String(value || '').split(/[\s,]+/).filter(Boolean).length; }
@@ -1310,7 +1315,7 @@ async function createResources({ db, cdnfly, upstreams, billing, kind, user, bod
     ? await Promise.all(clean.map(item => translateCcRuleReferences(db, item, user.id, false, upstreamClient.accountId)))
     : await translateCcRuleReferences(db, clean, user.id, false, upstreamClient.accountId);
   if (kind === 'streams') {
-    if (billing) await Promise.all((Array.isArray(clean) ? clean : [clean]).map((item, index) => billing.assertProjected(user.id, { ports: countStreamPorts(item) }, subscriptions[index].id)));
+    if (billing) await billing.assertBatchProjected(user.id, (Array.isArray(clean) ? clean : [clean]).map((item, index) => ({ ports: countStreamPorts(item), subscriptionId: subscriptions[index].id })));
     for (const item of (Array.isArray(clean) ? clean : [clean])) {
       item.user_package = upstreamClient.packageId;
       if (customerGroups?.stream) item.groups = String(customerGroups.stream.upstream_group_id);
@@ -1401,7 +1406,16 @@ async function updateCollection({ db, cdnfly, upstreams, billing, kind, user, bo
   return created.length ? created.join(',') : exposeResourceRecord(kind, upstream);
 }
 
-export async function handleTenantProxy({ req, url, user, db, cdnfly, upstreams = null, billing, readBody, dnsResolveCname = resolveDnsCname }) {
+export async function handleTenantProxy(options) {
+  const { req, url, user, db } = options;
+  normalizeCdnflyUrl(url);
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && /^\/api\/cdnfly\/v1\/(sites|streams)(\/|$)/.test(url.pathname)) {
+    return withResourceMutation(db, user.id, () => handleTenantProxyUnlocked(options));
+  }
+  return handleTenantProxyUnlocked(options);
+}
+
+async function handleTenantProxyUnlocked({ req, url, user, db, cdnfly, upstreams = null, billing, readBody, dnsResolveCname = resolveDnsCname }) {
   normalizeCdnflyUrl(url);
   const prefix = '/api/cdnfly/v1';
   if (!url.pathname.startsWith(prefix)) return null;
@@ -1575,9 +1589,9 @@ export async function handleTenantProxy({ req, url, user, db, cdnfly, upstreams 
       if (customerGroups?.site) translated.groups = String(customerGroups.site.upstream_group_id);
       return translated;
     }));
-    if (billing) await Promise.all(clean.map((item, index) => billing.assertProjected(user.id, {
-      domains: countDomains(item.domain), ports: countCustomSitePorts(item),
-    }, subscriptions[index].id)));
+    if (billing) await billing.assertBatchProjected(user.id, clean.map((item, index) => ({
+      domains: countDomains(item.domain), ports: countCustomSitePorts(item), subscriptionId: subscriptions[index].id,
+    })));
     for (const item of clean) {
       if (!item.domain) throw httpError('网站域名必填');
       if (await db.prepare('SELECT id FROM sites WHERE domain = ?').get(String(item.domain))) throw httpError('域名已存在', 409);

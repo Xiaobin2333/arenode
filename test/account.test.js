@@ -60,6 +60,17 @@ function request(base, path, cookie, method = 'GET', body) {
   return fetch(`${base}${path}`, { method, headers: { ...(cookie ? { cookie } : {}), 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
+test('可信反向代理后各客户端独立限流且会话和审计记录真实来源', async t => {
+  const f = await fixture({ trustedProxyCidrs: ['127.0.0.1'] }); const base = await start(f);
+  t.after(() => { f.server.close(); f.db.close(); });
+  const attempt = (ip, password) => fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: JSON.stringify({ username: password === 'wrong' ? 'missing-user' : 'alice', password }) });
+  for (let index = 0; index < 10; index++) assert.equal((await attempt('198.51.100.1', 'wrong')).status, 401);
+  assert.equal((await attempt('198.51.100.1', 'alice-password')).status, 429);
+  assert.equal((await attempt('192.0.2.99, 198.51.100.2', 'alice-password')).status, 200);
+  assert.equal(f.db.prepare('SELECT ip FROM sessions WHERE user_id=?').get(f.ids.alice).ip, '198.51.100.2');
+  assert.equal(f.db.prepare("SELECT ip FROM audit_logs WHERE action='login.success' AND actor_id=?").get(f.ids.alice).ip, '198.51.100.2');
+});
+
 test('用户通过邮箱验证码自助注册且不自动获得套餐', async t => {
   const f = await fixture(); const base = await start(f); t.after(() => { f.server.close(); f.db.close(); });
   const publicConfig = await (await request(base, '/api/auth/config')).json();

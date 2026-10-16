@@ -337,6 +337,16 @@ export class BillingService {
     return selected;
   }
 
+  async assertBatchProjected(userId, entries) {
+    const totals = new Map();
+    for (const { subscriptionId, domains = 0, ports = 0 } of entries) {
+      const id = Number(subscriptionId);
+      const total = totals.get(id) || { domains: 0, ports: 0 };
+      total.domains += domains; total.ports += ports; totals.set(id, total);
+    }
+    for (const [id, total] of totals) await this.assertProjected(userId, total, id);
+  }
+
   async syncSitePorts(siteId, config) {
     if (!Object.hasOwn(config || {}, 'http_listen') && !Object.hasOwn(config || {}, 'https_listen')) return;
     const ports = [];
@@ -345,9 +355,12 @@ export class BillingService {
       for (const port of String(listen.port ?? '').split(/[\s,]+/).map(Number)) if (Number.isInteger(port) && port > 0 && port <= 65535 && port !== standard) ports.push(port);
     };
     add(config?.http_listen, 80); add(config?.https_listen, 443);
-    await this.db.prepare('DELETE FROM site_custom_ports WHERE site_id = ?').run(siteId);
-    const insert = this.db.prepare('INSERT OR IGNORE INTO site_custom_ports (site_id, port) VALUES (?, ?)');
-    for (const port of new Set(ports)) await insert.run(siteId, port);
+    await this.db.transaction(async transaction => {
+      await transaction.prepare('SELECT id FROM sites WHERE id=? FOR UPDATE').get(siteId);
+      await transaction.prepare('DELETE FROM site_custom_ports WHERE site_id = ?').run(siteId);
+      const insert = transaction.prepare('INSERT OR IGNORE INTO site_custom_ports (site_id, port) VALUES (?, ?)');
+      for (const port of new Set(ports)) await insert.run(siteId, port);
+    });
   }
 
   async syncTraffic(userId) {

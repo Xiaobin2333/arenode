@@ -65,6 +65,44 @@ function request(base, path, cookie, method = 'GET', body) {
   return fetch(`${base}${path}`, { method, headers: { cookie, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
+test('通配符不授权同账号其他租户的域名、通配聚合或缓存任务', async t => {
+  const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); }); const base = await start(f);
+  f.db.prepare('UPDATE sites SET domain=? WHERE owner_id=?').run('*.example.com', f.ids.alice);
+  const cookie = await login(base, 'alice', 'alice-password');
+  for (const path of ['/monitor/site/access-log?host=B.EXAMPLE.COM:443', '/monitor/site/realtime?domain=*.example.com', '/monitor/site/top?site_id=1&type=top-ip&recent_time=10m', '/monitor/site/overview?type=traffic&start=2026-08-21%2000:00:00&end=2026-08-21%2012:00:00']) {
+    const before = f.cdnfly.calls.length;
+    assert.equal((await request(base, `/api/cdnfly/v1${path}`, cookie)).status, 403, path);
+    assert.equal(f.cdnfly.calls.length, before);
+  }
+  for (const type of ['clean_url', 'clean_dir', 'pre_cache_url']) {
+    assert.equal((await request(base, '/api/cdnfly/v1/jobs', cookie, 'POST', { type, data: { url: 'https://B.EXAMPLE.COM:443/a' } })).status, 403);
+  }
+  assert.equal((await request(base, '/api/cdnfly/v1/monitor/site/realtime?domain=safe.example.com', cookie)).status, 200);
+  assert.equal((await request(base, '/api/cdnfly/v1/jobs', cookie, 'POST', { type: 'clean_url', data: { url: 'https://safe.example.com/a' } })).status, 201);
+});
+
+test('四层端口别名、未知结构和不完整清单不能证明归属，独占资源仍可聚合', async t => {
+  const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); }); const base = await start(f);
+  const original = f.cdnfly.request;
+  let inventory = { items: [{ id: 'stream-a', listen: [{ port: 8443 }] }, { id: 'foreign-stream', listen: [{ port: 8443 }] }] };
+  let payload = [{ time: '00:00', value: 99 }, { port: 8443, value: 99 }];
+  f.cdnfly.request = async (method, path, body) => path === '/v1/streams?limit=0' ? inventory
+    : /\/monitor\/stream\/(realtime|top)/.test(path) ? payload : original(method, path, body);
+  const cookie = await login(base, 'alice', 'alice-password');
+  const read = async (endpoint = 'realtime?type=traffic') => (await (await request(base, `/api/cdnfly/v1/monitor/stream/${endpoint}`, cookie)).json()).data;
+  assert.deepEqual(await read(), []);
+  assert.deepEqual(await read('top?recent_time=10m'), []);
+  inventory = { total: 2, items: [{ id: 'stream-a', listen: [{ port: 8443 }] }] };
+  assert.deepEqual(await read(), []);
+  inventory = { items: [{ id: 'stream-a', listen: [{ port: 8443 }] }] };
+  assert.deepEqual(await read(), payload);
+  payload = { secret: 'account-wide' };
+  assert.deepEqual(await read(), []);
+  inventory = { items: [{ listen: [{ port: 8443 }] }] };
+  payload = [{ port: 8443, value: 99 }];
+  assert.deepEqual(await read(), []);
+});
+
 test('访问日志按当前租户域名过滤，详情需要列表授权', async t => {
   const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); }); const base = await start(f);
   const cookie = await login(base, 'alice', 'alice-password');

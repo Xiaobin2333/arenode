@@ -110,6 +110,8 @@ ARENODE_IMAGE=ghcr.io/<仓库所有者>/<仓库名>:latest
 
 Nginx 示例：
 
+同时在 `.env` 中配置 `TRUSTED_PROXY_CIDRS` 为应用实际连接到的反向代理 IP 或 CIDR（逗号分隔）。同机直接运行可用 `127.0.0.1,::1`；Docker 部署应核对应用看到的桥接网关地址。仅信任受控代理，不要配置全网网段。代理必须追加或覆盖 `X-Forwarded-For`。留空时忽略转发头，限流、审计及会话记录使用连接来源地址；配置后从右向左跳过可信代理，使用首个不可信地址识别客户端。
+
 ```nginx
 server {
     listen 443 ssl http2;

@@ -29,6 +29,45 @@ async function fixture() {
   return { db, cdnfly, billing, ids: { admin, alice, bob } };
 }
 
+test('批次累计域名与端口配额，并在创建前拒绝超额', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  f.db.prepare("UPDATE plans SET domain_limit=3,port_limit=3 WHERE code='trial'").run();
+  const sub = await f.billing.activeSubscription(f.ids.alice);
+  await f.billing.updateLegacySiteLimit(f.ids.alice);
+  const cookie = await login(api.base, 'alice', 'alice-password');
+  const sites = ['one', 'two'].map(name => ({ subscriptionId: sub.id, domain: `${name}.example.com,${name}b.example.com`, backend: [{ addr: '192.0.2.1' }] }));
+  const rejectedSites = await request(api.base, '/api/cdnfly/v1/sites', cookie, 'POST', sites);
+  assert.equal(rejectedSites.status, 409, await rejectedSites.text());
+  const streams = [8000, 9000].map(port => ({ subscriptionId: sub.id, listen: [{ port, protocol: 'tcp' }, { port: port + 1, protocol: 'tcp' }], backend_port: 443, backend: [{ addr: '192.0.2.1' }] }));
+  const rejectedStreams = await request(api.base, '/api/cdnfly/v1/streams', cookie, 'POST', streams);
+  assert.equal(rejectedStreams.status, 409, await rejectedStreams.text());
+  assert.equal(f.cdnfly.calls.some(call => call[1] === 'POST' && ['/v1/sites', '/v1/streams'].includes(call[2])), false);
+  await f.billing.assertBatchProjected(f.ids.alice, [{ subscriptionId: sub.id, domains: 2, ports: 2 }, { subscriptionId: sub.id, domains: 1, ports: 1 }]);
+});
+
+test('网站和四层创建共享锁，失败释放锁且完成后仍检查实际用量', async t => {
+  const f = await fixture(); const api = await startApi(f); t.after(() => { api.server.close(); f.db.close(); });
+  const sub = await f.billing.activeSubscription(f.ids.alice);
+  const cookie = await login(api.base, 'alice', 'alice-password');
+  const started = Promise.withResolvers(); const release = Promise.withResolvers();
+  f.cdnfly.createSite = async () => { started.resolve(); await release.promise; return { id: 'serialized-site' }; };
+  const input = { subscriptionId: sub.id, domain: 'one.example.com', origin: '192.0.2.1' };
+  const first = request(api.base, '/api/sites', cookie, 'POST', input);
+  await started.promise;
+  try {
+    assert.equal((await request(api.base, '/api/sites', cookie, 'POST', { ...input, domain: 'two.example.com' })).status, 409);
+    assert.equal((await request(api.base, '/api/cdnfly/v1/sites', cookie, 'POST', { subscriptionId: sub.id, domain: 'compat.example.com', backend: [{ addr: '192.0.2.1' }] })).status, 409);
+    assert.equal((await request(api.base, '/api/cdnfly/v1/streams', cookie, 'POST', { subscriptionId: sub.id })).status, 409);
+  } finally { release.resolve(); }
+  assert.equal((await first).status, 201);
+  assert.equal((await request(api.base, '/api/sites', cookie, 'POST', { ...input, domain: 'two.example.com' })).status, 409);
+  f.db.prepare('DELETE FROM sites WHERE owner_id=?').run(f.ids.alice);
+  f.cdnfly.createSite = async () => { throw new Error('upstream failure'); };
+  assert.equal((await request(api.base, '/api/sites', cookie, 'POST', input)).status, 400);
+  f.cdnfly.createSite = async () => ({ id: 'recovered-site' });
+  assert.equal((await request(api.base, '/api/sites', cookie, 'POST', input)).status, 201);
+});
+
 test('默认套餐与图片中的三项资源限制一致', async () => {
   const f = await fixture();
   const plans = f.db.prepare('SELECT code, price_cents, domain_limit, traffic_limit_bytes, port_limit FROM plans ORDER BY sort').all();

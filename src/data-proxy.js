@@ -103,16 +103,26 @@ function normalizeSiteTopQuery(query) {
 }
 
 async function ownedSites(db, userId) {
-  return db.prepare('SELECT id, upstream_id, upstream_account_id, subscription_id, domain FROM sites WHERE owner_id = ?').all(userId);
+  const sites = await db.prepare('SELECT id, upstream_id, upstream_account_id, subscription_id, domain FROM sites WHERE owner_id = ?').all(userId);
+  const foreign = await db.prepare('SELECT domain, upstream_account_id FROM sites WHERE owner_id <> ?').all(userId);
+  return sites.map(site => ({ ...site, conflictingDomains: foreign
+    .filter(other => Number(other.upstream_account_id || 0) === Number(site.upstream_account_id || 0))
+    .flatMap(other => splitDomains(other.domain)) }));
 }
 
 function splitDomains(value) {
   return String(value || '').split(/[\s,]+/).map(item => item.trim().toLowerCase().replace(/:\d+$/, '')).filter(Boolean);
 }
 
+function domainsOverlap(left, right) {
+  return left === right || (left.startsWith('*.') && right.endsWith(left.slice(1)))
+    || (right.startsWith('*.') && left.endsWith(right.slice(1)));
+}
+
 function domainOwned(domain, sites) {
   const candidate = String(domain || '').toLowerCase().replace(/:\d+$/, '');
-  return sites.some(site => splitDomains(site.domain).some(owned => owned === candidate || (owned.startsWith('*.') && candidate.endsWith(owned.slice(1)))));
+  return sites.some(site => !(site.conflictingDomains || []).some(other => domainsOverlap(candidate, other))
+    && splitDomains(site.domain).some(owned => owned === candidate || (owned.startsWith('*.') && candidate.endsWith(owned.slice(1)))));
 }
 
 async function scopeDomain(url, db, userId, preferredKey) {
@@ -291,14 +301,36 @@ function streamRecordAllowed(item, allowed, { allowAggregate = false } = {}) {
   return port === null ? allowAggregate : allowed.includes(port);
 }
 
-async function accountStreamsBelongToPorts(cdnfly, allowed) {
+async function streamVisibility(db, userId, cdnfly, allowed) {
   try {
     const data = await cdnfly.request('GET', '/v1/streams?limit=0'); const ref = findCollection(data);
-    const ports = [...new Set((ref?.items || []).flatMap(item => Array.isArray(item?.listen) ? item.listen : [])
-      .map(item => Number(item?.port)).filter(Number.isInteger))];
-    return ports.length > 0 && ports.every(port => allowed.includes(port));
+    if (!ref?.items.length) return { ports: [], allowAggregate: false };
+    // A partial inventory cannot prove exclusive ownership of a port or account.
+    let envelope = data;
+    while (envelope && !Array.isArray(envelope)) {
+      for (const key of ['count', 'total', 'total_count']) {
+        if (envelope[key] !== undefined && Number(envelope[key]) !== ref.items.length) return { ports: [], allowAggregate: false };
+      }
+      envelope = ['items', 'list', 'rows', 'data', 'result'].map(key => envelope[key]).find(value => value && typeof value === 'object');
+    }
+    const mappings = (await ownedStreamMappings(db, userId)).filter(row => Number(row.upstream_account_id || 0) === Number(cdnfly.accountId || 0));
+    const owned = new Set(mappings.map(row => String(row.upstream_id)));
+    const ownPorts = new Set(); const foreignPorts = new Set(); let allOwned = true;
+    for (const item of ref.items) {
+      const id = item?.id ?? item?._id;
+      if (id === undefined || id === null || !Array.isArray(item.listen) || !item.listen.length) return { ports: [], allowAggregate: false };
+      const isOwned = owned.has(String(id));
+      if (!isOwned) allOwned = false;
+      for (const listener of item.listen) {
+        const port = Number(listener?.port);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) return { ports: [], allowAggregate: false };
+        (isOwned ? ownPorts : foreignPorts).add(port);
+      }
+    }
+    return { ports: allowed.filter(port => ownPorts.has(port) && !foreignPorts.has(port)),
+      allowAggregate: allOwned && [...ownPorts].every(port => allowed.includes(port)) };
   } catch {
-    return false;
+    return { ports: [], allowAggregate: false };
   }
 }
 
@@ -431,6 +463,7 @@ export async function handleDataProxy({ req, url, user, db, cdnfly, upstreams = 
     for (const groupedSites of groups.values()) {
       const domains = [...new Set(groupedSites.flatMap(site => splitDomains(site.domain)))];
       if (!domains.length) continue;
+      if (domains.some(domain => !domainOwned(domain, groupedSites))) throw httpError('网站域名与其他租户重叠，无法安全查询聚合数据', 403);
       const scoped = new URLSearchParams(query); scoped.set('type', type); scoped.set('domain', domains.join(' '));
       const client = upstreams ? await upstreams.clientForSite(groupedSites[0]) : cdnfly;
       const data = filterScopedRecords(await client.request('GET', withQuery('/v1/monitor/site/realtime', scoped)), domains);
@@ -533,18 +566,19 @@ export async function handleDataProxy({ req, url, user, db, cdnfly, upstreams = 
   if (path === '/monitor/stream/realtime' && req.method === 'GET') {
     const initialScope = await scopePorts(url, db, user.id);
     await refreshStreamPorts(db, cdnfly, user.id, upstreams, initialScope.requested);
-    const { allowed } = initialScope;
+    const refreshedScope = await scopePorts(url, db, user.id);
+    const allowed = refreshedScope.requested || refreshedScope.allowed;
     if (!allowed.length) return { status: 200, data: [] };
     if (!upstreams) {
       const { query } = await scopePorts(url, db, user.id);
       query.set('port', '');
       const metric = String(query.get('type') || '');
       if (metric && !metric.startsWith('stream-')) query.set('type', `stream-${metric}`);
+      const visibility = await streamVisibility(db, user.id, cdnfly, allowed);
       const data = clone(await cdnfly.request('GET', withQuery('/v1/monitor/stream/realtime', query)));
       const ref = findCollection(data);
-      if (!ref) return { status: 200, data };
-      const allowAggregate = await accountStreamsBelongToPorts(cdnfly, allowed);
-      return { status: 200, data: setCollection(data, ref, ref.items.filter(item => streamRecordAllowed(item, allowed, { allowAggregate }))) };
+      if (!ref) return { status: 200, data: [] };
+      return { status: 200, data: setCollection(data, ref, ref.items.filter(item => streamRecordAllowed(item, visibility.ports, visibility))) };
     }
     const rows = await db.prepare(`SELECT DISTINCT r.upstream_account_id,p.port FROM tenant_resources r JOIN stream_ports p ON p.resource_id=r.id
       WHERE r.owner_id=? AND r.kind='streams' ORDER BY r.upstream_account_id,p.port`).all(user.id);
@@ -556,21 +590,23 @@ export async function handleDataProxy({ req, url, user, db, cdnfly, upstreams = 
       const metric = String(query.get('type') || '');
       if (metric && !metric.startsWith('stream-')) query.set('type', `stream-${metric}`);
       const client = await upstreams.clientForAccount(accountId);
+      const visibility = await streamVisibility(db, user.id, client, ports);
       const data = await client.request('GET', withQuery('/v1/monitor/stream/realtime', query)); const ref = findCollection(data);
-      const allowAggregate = await accountStreamsBelongToPorts(client, ports);
-      items.push(...(ref?.items || (Array.isArray(data) ? data : [])).filter(item => streamRecordAllowed(item, ports, { allowAggregate })));
+      items.push(...(ref?.items || []).filter(item => streamRecordAllowed(item, visibility.ports, visibility)));
     }
     return { status: 200, data: { count: items.length, items } };
   }
   if (path === '/monitor/stream/top' && req.method === 'GET') {
     const initialScope = await scopePorts(url, db, user.id);
     await refreshStreamPorts(db, cdnfly, user.id, upstreams, initialScope.requested);
-    const { allowed } = initialScope; const query = normalizeStreamTopQuery(initialScope.query);
+    const refreshedScope = await scopePorts(url, db, user.id);
+    const allowed = refreshedScope.requested || refreshedScope.allowed; const query = normalizeStreamTopQuery(refreshedScope.query);
     if (!allowed.length) return { status: 200, data: [] };
     if (!upstreams) {
+      const visibility = await streamVisibility(db, user.id, cdnfly, allowed);
       const data = clone(await cdnfly.request('GET', withQuery('/v1/monitor/stream/top', query))); const ref = findCollection(data);
       if (!ref) return { status: 200, data: [] };
-      return { status: 200, data: setCollection(data, ref, ref.items.filter(item => streamRecordPort(item) !== null && streamRecordAllowed(item, allowed))) };
+      return { status: 200, data: setCollection(data, ref, ref.items.filter(item => streamRecordPort(item) !== null && streamRecordAllowed(item, visibility.ports))) };
     }
     const clients = upstreams ? await upstreams.clientsForUser(user.id) : [cdnfly]; const items = [];
     for (const client of clients) {
@@ -578,8 +614,9 @@ export async function handleDataProxy({ req, url, user, db, cdnfly, upstreams = 
       const clientAllowed = (await db.prepare(`SELECT p.port FROM stream_ports p JOIN tenant_resources r ON r.id=p.resource_id
         WHERE r.owner_id=? AND r.kind='streams' AND r.upstream_account_id=?`).all(user.id, client.accountId)).map(row => Number(row.port));
       if (!clientAllowed.length) continue;
+      const visibility = await streamVisibility(db, user.id, client, clientAllowed.filter(port => allowed.includes(port)));
       const data = clone(await client.request('GET', withQuery('/v1/monitor/stream/top', scoped))); const ref = findCollection(data);
-      items.push(...(ref?.items || []).filter(item => streamRecordPort(item) !== null && streamRecordAllowed(item, clientAllowed) && streamRecordAllowed(item, allowed)));
+      items.push(...(ref?.items || []).filter(item => streamRecordPort(item) !== null && streamRecordAllowed(item, visibility.ports)));
     }
     return { status: 200, data: { count: items.length, items } };
   }
