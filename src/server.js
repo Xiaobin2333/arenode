@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { OperationsService } from './operations-service.js';
+import { OperationsService, recoverInterruptedRestore } from './operations-service.js';
 import { acquireOperationsLease } from './operations-lease.js';
 import { assertProductionConfig, loadConfig } from './config.js';
 import { createPostgresDatabase, bootstrapAdmin } from './db.js';
@@ -17,6 +17,7 @@ const config = loadConfig();
 if (process.env.NODE_ENV === 'production') assertProductionConfig(config);
 const lease = await acquireOperationsLease(config.databaseUrl);
 const db = await createPostgresDatabase(config.databaseUrl);
+await recoverInterruptedRestore(db);
 const cache = await new CacheService(config).connect();
 await cache.invalidate();
 if (!cache.connected) console.warn(`警告: Redis 不可用，缓存和限流已降级到进程内存: ${cache.lastError}`);

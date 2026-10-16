@@ -629,6 +629,14 @@ CREATE TABLE IF NOT EXISTS operations_jobs (
   started_at TIMESTAMPTZ,
   finished_at TIMESTAMPTZ
 );
+-- Excluded from archives so a process crash after COMMIT cannot resurrect
+-- restored authentication credentials before startup completes cleanup.
+CREATE TABLE IF NOT EXISTS operations_restore_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  job_id TEXT NOT NULL,
+  backup_id TEXT NOT NULL,
+  pre_restore_backup_id TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS site_inspections (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL,

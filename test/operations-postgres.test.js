@@ -6,7 +6,7 @@ import { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createPostgresDatabase } from '../src/db.js';
 import { acquireOperationsLease } from '../src/operations-lease.js';
-import { OperationsService } from '../src/operations-service.js';
+import { OperationsService, recoverInterruptedRestore } from '../src/operations-service.js';
 import { S3Backups } from '../src/s3-backups.js';
 import { operationDefaults, saveOperationSettings } from '../src/operations-settings.js';
 import { hashPassword } from '../src/security.js';
@@ -44,6 +44,13 @@ test('PostgreSQL 18 encrypted backup, transactional rollback, in-place restore a
       const chunks = []; for await (const chunk of params.Body) chunks.push(chunk); objects.set(params.Key, Buffer.concat(chunks));
     } });
     const snapshot = await backups.backup(settings);
+    await db.prepare('INSERT INTO operations_restore_state (id,job_id,backup_id,pre_restore_backup_id) VALUES (1,?,?,?)').run(crypto.randomUUID(), snapshot.id, snapshot.id);
+    await backups.withDownloaded(settings, snapshot.id, dump => backups.restore(dump));
+    assert.ok(await db.prepare('SELECT id FROM operations_restore_state').get(), 'restore marker survives archive overwrite');
+    assert.equal(await recoverInterruptedRestore(db), true);
+    assert.equal((await db.prepare('SELECT * FROM sessions').all()).length, 0);
+    assert.equal(await recoverInterruptedRestore(db), false);
+    await db.prepare('INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)').run('old-session', userId, new Date(Date.now() + 86400000).toISOString());
     await db.prepare('UPDATE users SET username=? WHERE id=?').run('after_snapshot', userId);
     // A dependent object absent from the archive makes --clean fail. The entire
     // restore transaction must roll back, including previously dropped objects.

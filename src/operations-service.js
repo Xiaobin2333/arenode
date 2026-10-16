@@ -4,6 +4,23 @@ import { operationSettings, opError } from './operations-settings.js';
 import { S3Backups } from './s3-backups.js';
 import { SiteInspection } from './site-inspection.js';
 
+async function revokeRestoredAuthentication(db) {
+  for (const table of ['sessions', 'user_api_keys', 'mfa_challenges', 'password_reset_tokens', 'email_change_tokens', 'pending_registrations']) await db.prepare(`DELETE FROM ${table}`).run();
+  await db.prepare("UPDATE operations_jobs SET status='failed',error='数据库还原后取消旧任务',finished_at=CURRENT_TIMESTAMP WHERE status IN ('queued','running')").run();
+}
+
+export async function recoverInterruptedRestore(db) {
+  const pending = await db.prepare('SELECT * FROM operations_restore_state WHERE id=1').get();
+  if (!pending) return false;
+  await db.transaction(async transaction => {
+    await revokeRestoredAuthentication(transaction);
+    await transaction.prepare(`INSERT INTO operations_jobs (id,kind,status,input,result,error,finished_at) VALUES (?,'restore','failed',?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET status='failed',result=excluded.result,error=excluded.error,finished_at=CURRENT_TIMESTAMP`)
+      .run(pending.job_id, JSON.stringify({ backupId: pending.backup_id }), JSON.stringify({ preRestoreBackupId: pending.pre_restore_backup_id }), '还原进程曾中断；已撤销恢复的凭据，请核查当前数据及还原前备份');
+    await transaction.prepare('DELETE FROM operations_restore_state WHERE id=1').run();
+  });
+  return true;
+}
+
 export class OperationsService {
   constructor({ db, config, billing, cache, upstreams, cdnfly, lease, restart, backups, inspection }) {
     Object.assign(this, { db, config, billing, cache, lease, restart });
@@ -73,23 +90,20 @@ export class OperationsService {
           await delay(100);
         }
         const before = await this.backups.backup(settings, { reason: 'pre_restore', protectedIds: [backupId] });
+        await this.db.prepare('INSERT INTO operations_restore_state (id,job_id,backup_id,pre_restore_backup_id) VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET job_id=excluded.job_id,backup_id=excluded.backup_id,pre_restore_backup_id=excluded.pre_restore_backup_id').run(job.id, backupId, before.id);
         await this.backups.restore(dump); committed = true;
-        await this.db.prepare('DELETE FROM sessions').run();
-        await this.db.prepare('DELETE FROM user_api_keys').run();
-        await this.db.prepare('DELETE FROM mfa_challenges').run();
-        await this.db.prepare('DELETE FROM password_reset_tokens').run();
-        await this.db.prepare('DELETE FROM email_change_tokens').run();
-        await this.db.prepare('DELETE FROM pending_registrations').run();
+        await revokeRestoredAuthentication(this.db);
         await this.cache?.invalidate();
-        await this.db.prepare("UPDATE operations_jobs SET status='failed',error='数据库还原后取消旧任务',finished_at=CURRENT_TIMESTAMP WHERE status IN ('queued','running')").run();
         await this.db.prepare(`INSERT INTO operations_jobs (id,kind,status,input,result,finished_at) VALUES (?,'restore','succeeded',?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET status='succeeded',result=excluded.result,finished_at=CURRENT_TIMESTAMP`)
           .run(job.id, JSON.stringify({ backupId }), JSON.stringify({ backupId, preRestoreBackupId: before.id }));
         await this.db.prepare('INSERT INTO audit_logs (action,resource_type,resource_id,detail) VALUES (?,?,?,?)').run('database.restore', 'backup', backupId, JSON.stringify({ originalActorId: job.actor_id, preRestoreBackupId: before.id }));
+        await this.db.prepare('DELETE FROM operations_restore_state WHERE id=1').run();
       } finally {
         if (committed) {
           // Keep maintenance and the exclusive lease through process termination.
           this.stopped = true; clearInterval(this.timer); setTimeout(() => this.restart(), 1000).unref();
         } else {
+          await this.db.prepare('DELETE FROM operations_restore_state WHERE id=1').run();
           this.restoring = false; if (this.billing) this.billing.paused = false;
           await this.lease.releaseExclusive();
         }

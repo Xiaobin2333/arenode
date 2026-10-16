@@ -105,7 +105,7 @@ export class S3Backups {
     const maxBytes = settings.maxBackupMb * 1024 * 1024;
     try {
       const version = await this.run('pg_dump', ['--version'], postgresEnvironment(this.config.databaseUrl));
-      await this.run('pg_dump', ['--format=custom', '--no-owner', '--no-acl', '--file', dump], postgresEnvironment(this.config.databaseUrl), { maxFile: dump, maxBytes });
+      await this.run('pg_dump', ['--format=custom', '--no-owner', '--no-acl', '--exclude-table=public.operations_restore_state', '--file', dump], postgresEnvironment(this.config.databaseUrl), { maxFile: dump, maxBytes });
       const iv = crypto.randomBytes(12); const cipher = crypto.createCipheriv('aes-256-gcm', this.key('data'), iv); const hash = crypto.createHash('sha256');
       await pipeline(createReadStream(dump), cipher, limiter(maxBytes, hash), createWriteStream(encrypted, { mode: 0o600 }));
       const id = crypto.randomUUID();
