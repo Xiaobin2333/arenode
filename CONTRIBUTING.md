@@ -4,7 +4,7 @@
 
 ## 本地开发
 
-要求 Node.js 22.5+、PostgreSQL 17 和 Redis 7。复制 `.env.example` 为 `.env`，填写本地数据库与密钥后运行：
+要求 Node.js 24.22+、PostgreSQL 18 和 Redis 8。数据库备份还需要 PostgreSQL 18 客户端工具（生产镜像已内置）。复制 `.env.example` 为 `.env`，填写本地数据库与密钥后运行：
 
 ```bash
 npm ci

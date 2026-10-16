@@ -1,5 +1,6 @@
 FROM node:24.22.0-alpine
 WORKDIR /app
+RUN apk add --no-cache postgresql18-client
 LABEL org.opencontainers.image.title="Arenode" \
       org.opencontainers.image.description="Multi-tenant CDN resource management console" \
       org.opencontainers.image.licenses="MIT"

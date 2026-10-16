@@ -35,6 +35,11 @@ export class CacheService {
   async currentGeneration() {
     if (!this.connected) return this.generation;
     try {
+      if (this.pendingInvalidation) {
+        this.generation = Number(await this.client.incr('cdnfly:cache:generation'));
+        this.pendingInvalidation = false;
+        return this.generation;
+      }
       const value = await this.client.get('cdnfly:cache:generation');
       this.generation = Number(value || 1);
       return this.generation;
@@ -47,8 +52,9 @@ export class CacheService {
   async invalidate() {
     this.memory.clear();
     this.generation += 1;
+    this.pendingInvalidation = true;
     if (!this.connected) return;
-    try { this.generation = Number(await this.client.incr('cdnfly:cache:generation')); }
+    try { this.generation = Number(await this.client.incr('cdnfly:cache:generation')); this.pendingInvalidation = false; }
     catch (error) { this.connected = false; this.lastError = error.message; }
   }
 

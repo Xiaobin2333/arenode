@@ -144,6 +144,8 @@
         </div>
 
         <div class="admin-only admin-nav">
+          <button data-view="backups-admin" data-title="数据库备份" class="nav-direct"><span class="nav-icon">▣</span><span>数据库备份</span></button>
+          <button data-view="inspection-admin" data-title="AI 站点巡查" class="nav-direct"><span class="nav-icon">◎</span><span>AI 站点巡查</span></button>
           <label class="nav-search"><span>⌕</span><input id="adminNavSearch" type="search" placeholder="搜索后台功能" aria-label="搜索后台功能"></label>
           <button data-view="admin-overview" data-title="管理控制台" class="nav-direct active"><span class="nav-icon">◆</span><span>管理控制台</span></button>
           <section class="nav-cluster"><button type="button" class="nav-parent" data-nav-toggle><span class="nav-icon">♙</span><span>运营管理</span><i></i></button><div class="nav-children"><button data-view="users" data-title="客户管理"><span></span>客户管理</button><button data-view="invitations" data-title="邀请码"><span></span>邀请码</button><button data-view="admin-sites" data-title="站点管理"><span></span>站点管理</button><button data-view="admin-streams" data-title="四层转发"><span></span>四层转发</button><button data-view="recovery-admin" data-title="灾后恢复"><span></span>灾后恢复</button><button data-view="billing-admin" data-admin-billing-tab="usage" data-title="客户用量"><span></span>客户用量</button></div></section>
@@ -167,6 +169,8 @@
       </header>
 
       <main class="content">
+        <section id="backups-admin" class="view admin-only"></section>
+        <section id="inspection-admin" class="view admin-only"></section>
         <div id="appAnnouncement" class="app-announcement hidden"><div><strong></strong><p></p></div><button id="closeAppAnnouncement" class="icon-button" type="button" aria-label="关闭公告">×</button></div>
         <section id="overview" class="view active">
           <section class="overview-welcome">

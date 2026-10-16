@@ -1,4 +1,6 @@
 import { hashPassword, validateUsername, verifyPassword } from './security.js';
+import { withResourceMutation } from './resource-mutation.js';
+import { assertNoPolicyHold } from './site-inspection.js';
 import { publicUser } from './db.js';
 import { validateSiteInput } from './validation.js';
 import { pagination, paged, searchLike } from './http-utils.js';
@@ -63,7 +65,20 @@ export async function createVirtualUser(db, billing, body) {
   }
 }
 
-export async function handleAdminApi({ req, url, user, db, cdnfly, upstreams = null, billing, readBody }) {
+export async function handleAdminApi(options) {
+  const { req, url, db } = options;
+  const match = url.pathname.match(/^\/api\/admin\/sites\/(\d+)$/);
+  if (options.user.role === 'admin' && match && ['PUT', 'DELETE'].includes(req.method)) {
+    const site = await db.prepare('SELECT owner_id FROM sites WHERE id=?').get(Number(match[1]));
+    if (site) return withResourceMutation(db, site.owner_id, async () => {
+      if (req.method === 'PUT') await assertNoPolicyHold(db, [Number(match[1])]);
+      return handleAdminApiUnlocked(options);
+    });
+  }
+  return handleAdminApiUnlocked(options);
+}
+
+async function handleAdminApiUnlocked({ req, url, user, db, cdnfly, upstreams = null, billing, readBody }) {
   if (url.pathname === '/api/account/password' && req.method === 'PUT') {
     const body = await readBody(req);
     if (!verifyPassword(body.currentPassword || '', user.password_hash)) throw httpError('当前密码错误', 403);

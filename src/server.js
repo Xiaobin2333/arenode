@@ -1,4 +1,6 @@
 import http from 'node:http';
+import { OperationsService } from './operations-service.js';
+import { acquireOperationsLease } from './operations-lease.js';
 import { assertProductionConfig, loadConfig } from './config.js';
 import { createPostgresDatabase, bootstrapAdmin } from './db.js';
 import { CdnflyClient } from './cdnfly.js';
@@ -13,8 +15,10 @@ import { BRAND_NAME } from './brand.js';
 
 const config = loadConfig();
 if (process.env.NODE_ENV === 'production') assertProductionConfig(config);
+const lease = await acquireOperationsLease(config.databaseUrl);
 const db = await createPostgresDatabase(config.databaseUrl);
 const cache = await new CacheService(config).connect();
+await cache.invalidate();
 if (!cache.connected) console.warn(`警告: Redis 不可用，缓存和限流已降级到进程内存: ${cache.lastError}`);
 const created = await bootstrapAdmin(db, config.adminUsername, config.adminPassword);
 if (created) console.log(`已创建管理员: ${config.adminUsername}`);
@@ -32,17 +36,25 @@ if (initialSettings.registrationEnabled && (!initialSettings.emailVerificationEn
 const billing = await new BillingService(db, cdnfly, { renewalGraceDays: initialSettings.renewalGraceDays,
   settingsProvider: () => getRuntimeSettings(db, config), upstreams }).initialize();
 billing.startScheduler();
-const server = http.createServer(createApp({ db, cdnfly, upstreams, config, billing, cache, mailer }));
+const operations = new OperationsService({ db, config, billing, cache, upstreams, cdnfly, lease, restart: () => shutdown() });
+const app = createApp({ db, cdnfly, upstreams, config, billing, cache, mailer, operations });
+const server = http.createServer(async (req, res) => {
+  if (operations.restoring) { res.writeHead(503, { 'content-type': 'application/json', 'retry-after': '30' }); res.end(JSON.stringify({ error: '数据库正在还原，请稍后重新登录' })); return; }
+  operations.inflight++;
+  try { await app(req, res); } finally { operations.inflight--; }
+});
+operations.reconciling = true;
 server.listen(config.port, () => {
   console.log(`${BRAND_NAME} 已启动: ${config.appOrigin}`);
   void reconcileCustomerUpstreamGroups({ db, upstreams, cdnfly }).then(result => {
     console.log(`客户上游分组对账完成: ${result.pairs} 个客户上游关系，${result.sites} 个网站，${result.streams} 个转发，清理 ${result.staleStreamsRemoved} 个陈旧转发，${result.errors.length} 个失败项`);
     for (const error of result.errors) console.error(`客户上游分组对账失败: ${error.kind}#${error.resourceId || '-'} ${error.message}`);
-  }).catch(error => console.error(`客户上游分组对账失败: ${error.message}`));
+  }).catch(error => console.error(`客户上游分组对账失败: ${error.message}`)).finally(() => { operations.reconciling = false; operations.start(); });
 });
 
 function shutdown() {
-  server.close(async () => { await Promise.allSettled([db.close(), cache.close()]); process.exit(0); });
+  billing.paused = true;
+  server.close(async () => { await operations.stop(); await Promise.allSettled([db.close(), cache.close()]); await lease.close(); process.exit(0); });
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

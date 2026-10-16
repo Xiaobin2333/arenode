@@ -246,3 +246,7 @@ Arenode 展示上游实际签发和同步状态。请确认测试域名的 CNAME
 ## 许可证
 
 Arenode 使用 [MIT License](./LICENSE) 发布。
+
+## 数据库备份与 AI 巡查
+
+管理端支持 S3 加密备份、保留份数、定时备份及覆盖当前库还原；AI 站点巡查支持 OpenAI 兼容接口、定时/手动执行、证据与置信度、人工审核和可选自动禁用。配置和还原说明见 [备份与巡查指南](doc/BACKUPS_AND_INSPECTION.md)。

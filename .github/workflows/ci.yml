@@ -54,6 +54,13 @@ jobs:
       - name: Audit all dependencies
         run: npm audit --audit-level=moderate
 
+      - name: Verify PostgreSQL backup and overwrite restore
+        run: |
+          docker build -t arenode-backup-test:local .
+          docker run --rm --network host --user "$(id -u):$(id -g)" -v "$PWD:/workspace" -w /workspace \
+            -e OPERATIONS_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+            arenode-backup-test:local node --test test/operations-postgres.test.js
+
   container:
     name: Build container image
     needs: test

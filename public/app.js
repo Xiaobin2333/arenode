@@ -1,4 +1,5 @@
 import { resourceEnabled, resourceLifecycle, siteLifecycle } from './resource-status.js?v=arenode';
+import { loadOperations } from './operations.js';
 import { collectMonitorPoints, formatMonitorBandwidth, formatMonitorChartLabel, formatMonitorTime, normalizeMonitorItems } from './monitor-utils.js';
 
 const DEFAULT_SSL_CIPHERS = 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
@@ -693,6 +694,7 @@ function showView(name, activeButton = null) {
   $('.sidebar').classList.remove('open');
   window.scrollTo({ top: 0, behavior: 'instant' });
   const loaders = {
+    'backups-admin': () => loadOperations('backup', api, toast), 'inspection-admin': () => loadOperations('inspection', api, toast),
     users: loadUsers, audit: loadAudit, upstreams: loadUpstreams, 'system-health': loadSystemHealth, 'runtime-settings': loadRuntimeSettings,
     administrators: loadAdministrators, invitations: loadInvitations,
     security: loadResources, data: loadDataPane,
@@ -2957,7 +2959,7 @@ async function showApp() {
   $$('.admin-only').forEach(el => el.classList.toggle('hidden', state.me.user.role !== 'admin'));
   $$('.customer-only').forEach(el => el.classList.toggle('hidden', state.me.user.role === 'admin'));
   const superAdmin = state.me.user.role === 'admin' && state.me.user.adminRole === 'super_admin';
-  for (const view of ['administrators', 'invitations', 'runtime-settings', 'upstreams']) {
+  for (const view of ['administrators', 'invitations', 'runtime-settings', 'upstreams', 'backups-admin', 'inspection-admin']) {
     $$(`[data-view="${view}"]`).forEach(element => element.classList.toggle('hidden', !superAdmin));
     $(`#${view}`)?.classList.toggle('restricted-view', !superAdmin);
   }

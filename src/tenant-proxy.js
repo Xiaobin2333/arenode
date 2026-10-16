@@ -1,5 +1,6 @@
 import { resolveCname as resolveDnsCname } from 'node:dns/promises';
 import { withResourceMutation } from './resource-mutation.js';
+import { assertNoPolicyHold } from './site-inspection.js';
 import { validateDomain, validateOrigin } from './validation.js';
 import { normalizeCdnflyUrl } from './compat-path.js';
 import { ensureCustomerUpstreamGroups } from './customer-groups.js';
@@ -1412,7 +1413,18 @@ export async function handleTenantProxy(options) {
   const resourceWrite = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && /^\/api\/cdnfly\/v1\/(sites|streams)(\/|$)/.test(url.pathname);
   const streamRefresh = req.method === 'GET' && /^\/api\/cdnfly\/v1\/streams(\/|$)/.test(url.pathname);
   if (resourceWrite || streamRefresh) {
-    return withResourceMutation(db, user.id, () => handleTenantProxyUnlocked(options));
+    return withResourceMutation(db, user.id, async () => {
+      if (resourceWrite && /\/sites(\/|$)/.test(url.pathname)) {
+        const suffix = url.pathname.split('/sites')[1];
+        if (suffix) await assertNoPolicyHold(db, suffix.split('/')[1].split(',').filter(id => /^\d+$/.test(id)));
+        else if (req.method === 'PUT') {
+          const body = await options.readBody(req);
+          if (Array.isArray(body)) await assertNoPolicyHold(db, body.map(item => item.id));
+          options = { ...options, readBody: async () => body };
+        }
+      }
+      return handleTenantProxyUnlocked(options);
+    });
   }
   return handleTenantProxyUnlocked(options);
 }

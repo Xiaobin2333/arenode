@@ -617,6 +617,41 @@ CREATE TABLE IF NOT EXISTS registration_invites (
 
 DROP TABLE IF EXISTS blocked_identities;
 
+CREATE TABLE IF NOT EXISTS operations_jobs (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  input TEXT NOT NULL DEFAULT '{}',
+  result TEXT NOT NULL DEFAULT '{}',
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS site_inspections (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  site_id BIGINT REFERENCES sites(id) ON DELETE SET NULL,
+  domain TEXT NOT NULL,
+  status TEXT NOT NULL,
+  category TEXT,
+  confidence DOUBLE PRECISION,
+  evidence TEXT NOT NULL DEFAULT '{}',
+  action TEXT NOT NULL DEFAULT 'none',
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS site_policy_holds (
+  site_id BIGINT PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+  inspection_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_operations_jobs_status ON operations_jobs(status,created_at);
+CREATE INDEX IF NOT EXISTS idx_inspections_site ON site_inspections(site_id,created_at);
+
 CREATE INDEX IF NOT EXISTS idx_sites_owner ON sites(owner_id);
 CREATE INDEX IF NOT EXISTS idx_sites_subscription ON sites(subscription_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_resources_owner_kind ON tenant_resources(owner_id, kind);

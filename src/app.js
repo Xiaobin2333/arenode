@@ -1,5 +1,7 @@
 import { handleRecoveryApi } from './recovery.js';
 import fs from 'node:fs';
+import { handleOperationsApi } from './operations-api.js';
+import { assertNoPolicyHold } from './site-inspection.js';
 import { withResourceMutation } from './resource-mutation.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,7 +170,7 @@ function summarizeUpstreamHealth(active, checks) {
   return { ok, degraded, stale: transientHealthy > 0, checkedAt: checks.at(-1)?.checkedAt || new Date().toISOString() };
 }
 
-export function createApp({ db, cdnfly, upstreams = null, config, billing = null, cache = null, mailer = null, turnstileFetch = fetch, dnsResolveCname, dnsResolveTxt }) {
+export function createApp({ db, cdnfly, upstreams = null, config, billing = null, cache = null, mailer = null, operations = null, turnstileFetch = fetch, dnsResolveCname, dnsResolveTxt }) {
   const resolveClientIp = createClientIpResolver(config.trustedProxyCidrs);
   const loginAttempts = new Map();
   const registrationAttempts = new Map();
@@ -503,6 +505,8 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
       if (url.pathname.startsWith('/api/')) {
         const user = await userFromSession(db, req);
         if (!user) return json(res, 401, { error: '请先登录' });
+        const operationsResult = await handleOperationsApi({ req, url, user, db, config, operations, readBody: () => readBody(req) });
+        if (operationsResult) return json(res, operationsResult.status, operationsResult.data);
         const currentTokenHash = tokenDigest(getSessionToken(req));
         if (user.role !== 'admin' && (await getRuntimeSettings(db, config)).maintenanceMode && url.pathname !== '/api/auth/logout') return json(res, 503, { error: '平台正在维护，请稍后再试', maintenance: true });
 
@@ -759,6 +763,7 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
             return await withResourceMutation(db, user.id, async () => {
             const site = await ownedSite(db, siteMatch[1], user);
             if (!site) return json(res, 404, { error: '站点不存在' });
+            await assertNoPolicyHold(db, [site.id]);
             delete input.domain;
             let localGroupId = site.local_group_id;
             if (Object.hasOwn(body, 'groupId')) {

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { withResourceMutation } from './resource-mutation.js';
 import { changeBalance } from './wallet.js';
 import { ensureCustomerUpstreamGroups } from './customer-groups.js';
 import { normalizeSiteProfile } from './site-profiles.js';
@@ -439,12 +440,20 @@ export class BillingService {
   }
 
   async restore(userId, subscriptionId = null) {
+    return withResourceMutation(this.db, userId, () => this.restoreUnlocked(userId, subscriptionId), { allowReentrant: true });
+  }
+
+  async restoreUnlocked(userId, subscriptionId = null) {
     const rows = subscriptionId === null
       ? await this.db.prepare('SELECT * FROM quota_suspensions WHERE user_id = ? AND restored_at IS NULL ORDER BY id').all(userId)
       : await this.db.prepare('SELECT * FROM quota_suspensions WHERE user_id = ? AND subscription_id = ? AND restored_at IS NULL ORDER BY id').all(userId, subscriptionId);
     for (const row of rows) {
       try {
         if (row.resource_kind === 'site') {
+          if (await this.db.prepare('SELECT site_id FROM site_policy_holds WHERE site_id=?').get(row.resource_id)) {
+            await this.db.prepare('UPDATE quota_suspensions SET restored_at=CURRENT_TIMESTAMP WHERE id=?').run(row.id);
+            continue;
+          }
           const site = await this.db.prepare('SELECT * FROM sites WHERE id = ? AND owner_id = ?').get(row.resource_id, userId);
           if (site) {
             const cdnfly = this.upstreams ? await this.upstreams.clientForSite(site) : this.cdnfly;
@@ -560,6 +569,7 @@ export class BillingService {
   }
 
   async runScheduled({ syncTraffic = true } = {}) {
+    if (this.paused || this.scheduler.runningSince) return;
     const started = Date.now();
     this.scheduler.runningSince = new Date(started).toISOString();
     try {
