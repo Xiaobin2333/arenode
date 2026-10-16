@@ -40,7 +40,7 @@ Arenode ───── PostgreSQL（用户、归属、套餐、钱包、审计�
 - 一个可用的 CDNFly v6 普通用户 API 账号
 - 用于生产访问的域名和 HTTPS 反向代理
 
-本地源码运行还需要 Node.js 22.5+、PostgreSQL 17 和 Redis 7。
+本地源码运行需要 Node.js 24.22.0+（LTS）、PostgreSQL 18.6 和 Redis 8.10.2。Docker 与 CI 使用相同版本；旧 PostgreSQL 17 部署须先按[运行环境升级指南](./doc/RUNTIME_UPGRADE.md)迁移数据。
 
 ## Docker 快速开始
 
@@ -200,7 +200,7 @@ npm test
 docker compose exec -T postgres pg_dump -U cdnfly -d cdnfly_reseller -Fc > arenode.dump
 ```
 
-升级前应同时保存 `.env`、`SETTINGS_ENCRYPTION_KEY` 和数据库备份，然后：
+升级前应同时保存 `.env`、`SETTINGS_ENCRYPTION_KEY` 和数据库备份。以下命令仅适用于同一数据库大版本内升级；从 PostgreSQL 17 / Redis 7 升级到当前版本必须先完成[运行环境升级指南](./doc/RUNTIME_UPGRADE.md)，不能直接复用旧数据库目录：
 
 ```bash
 docker compose pull

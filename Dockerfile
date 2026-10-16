@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:24.22.0-alpine
 WORKDIR /app
 LABEL org.opencontainers.image.title="Arenode" \
       org.opencontainers.image.description="Multi-tenant CDN resource management console" \
