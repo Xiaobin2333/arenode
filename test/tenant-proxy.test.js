@@ -795,7 +795,10 @@ test('完整网站创建接口按订阅的 AI 策略注入规则', async t => {
   const subscription = f.db.prepare('SELECT s.*,p.site_profile FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=?').get(subscriptionId);
   const billing = {
     resolveSubscription: async () => subscription,
-    assertProjected: async () => true,
+    assertBatchProjected: async (userId, entries) => {
+      assert.equal(userId, f.ids.alice);
+      assert.deepEqual(entries, [{ domains: 1, ports: 0, subscriptionId }]);
+    },
     syncSitePorts: async () => true,
   };
 
