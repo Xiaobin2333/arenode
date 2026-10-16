@@ -17,6 +17,7 @@ import { handleTenantProxy } from '../src/tenant-proxy.js';
 import { handleAdminApi } from '../src/admin-api.js';
 import { BillingService } from '../src/billing.js';
 import { CacheService } from '../src/cache.js';
+import { withResourceMutation } from '../src/resource-mutation.js';
 
 const config = { settingsEncryptionKey: 'test-operations-encryption-key-not-for-production', databaseUrl: 'postgresql://test:password@localhost/test' };
 const settings = { ...operationDefaults.backup, bucket: 'test-bucket', accessKeyId: 'access-key', secretAccessKey: 'secret-key', retention: 2 };
@@ -221,6 +222,17 @@ test('cache invalidation is retried after Redis recovers', async () => {
   await cache.invalidate(); assert.equal(cache.pendingInvalidation, true);
   cache.connected = true; assert.equal(await cache.currentGeneration(), 11); assert.equal(cache.pendingInvalidation, false);
   assert.equal(await cache.currentGeneration(), 11);
+});
+
+test('expired async lock context cannot bypass a new owner of the mutation lock', async t => {
+  const { db, user } = fixture(t); let delayed;
+  await withResourceMutation(db, user.id, async () => {
+    await withResourceMutation(db, user.id, async () => {}, { allowReentrant: true });
+    delayed = new Promise(resolve => setTimeout(() => {
+      withResourceMutation(db, user.id, () => 'incorrect bypass', { allowReentrant: true }).then(resolve, resolve);
+    }, 20));
+  });
+  await withResourceMutation(db, user.id, async () => { assert.equal((await delayed).status, 409); });
 });
 
 test('real AWS SDK upload, signed requests, list and download roundtrip against an isolated S3 HTTP fixture', async t => {
