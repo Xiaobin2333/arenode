@@ -32,7 +32,7 @@ export async function fetchPublicPage(value, { resolve = lookup, timeoutMs = 150
         if (!/^text\/(html|plain)/i.test(res.headers['content-type'] || '') || (res.headers['content-encoding'] && res.headers['content-encoding'] !== 'identity')) { res.destroy(); reject(opError('页面不是可检查的未压缩文本')); return; }
         const chunks = []; let size = 0;
         res.on('data', chunk => { size += chunk.length; if (size > maxBytes) request.destroy(opError('页面超过抓取大小限制')); else chunks.push(chunk); });
-        res.on('end', () => resolveResponse({ text: Buffer.concat(chunks).toString('utf8') }));
+        res.on('end', () => resolveResponse({ text: Buffer.concat(chunks).toString('utf8'), plain: /^text\/plain/i.test(res.headers['content-type']) }));
         res.on('error', reject);
       });
       const timer = setTimeout(() => request.destroy(opError('页面抓取超时')), timeoutMs);
@@ -40,14 +40,14 @@ export async function fetchPublicPage(value, { resolve = lookup, timeoutMs = 150
     });
     if (response.redirect) { url = new URL(response.redirect, url); continue; }
     if (response.text === undefined) throw opError('重定向缺少地址');
-    const { document } = parseHTML(response.text);
-    const links = [...document.querySelectorAll('a[href]')].slice(0, 100).map(a => {
+    const document = response.plain ? null : parseHTML(response.text).document;
+    const links = [...(document?.querySelectorAll('a[href]') || [])].slice(0, 100).map(a => {
       try { const target = new URL(a.getAttribute('href'), url); target.hash = ''; return target.origin === url.origin ? target.href : null; } catch { return null; }
     }).filter(Boolean);
-    for (const element of document.querySelectorAll('script,style,noscript,svg')) element.remove();
-    const text = (document.body?.textContent || document.documentElement?.textContent || response.text).replace(/\s+/g, ' ').trim().slice(0, 20000);
+    for (const element of document?.querySelectorAll('script,style,noscript,svg') || []) element.remove();
+    const text = (response.plain ? response.text : (document.body?.textContent || document.documentElement?.textContent || '')).replace(/\s+/g, ' ').trim().slice(0, 20000);
     if (text.length < 30) throw opError('可读文本不足，需人工检查（可能为图片或 JavaScript 页面）');
-    return { url: url.href, text, links: [...new Set(links)], title: document.title.slice(0, 300) };
+    return { url: url.href, text, links: [...new Set(links)], title: document?.title?.slice(0, 300) || '' };
   }
   throw opError('重定向次数过多');
 }

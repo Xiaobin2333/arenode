@@ -104,6 +104,9 @@ test('page fetch pins DNS, rechecks redirects, bounds content and DNS time', asy
   };
   const page = await fetchPublicPage('https://example.com', { resolve, get: transport('<html><title>Page</title><body>This is sufficiently long visible text for the website inspection.<script>hidden payload</script><a href="/next">Next</a></body></html>') });
   assert.ok(!page.text.includes('hidden payload')); assert.deepEqual(page.links, ['https://example.com/next']);
+  await assert.rejects(fetchPublicPage('https://example.com', { resolve, get: transport(`<html><body><script>${'hidden content '.repeat(10)}</script></body></html>`) }), /可读文本不足/);
+  const plain = await fetchPublicPage('https://example.com', { resolve, get: transport('This is a plain text page with sufficient readable content.', 200, { 'content-type': 'text/plain' }) });
+  assert.equal(plain.title, ''); assert.ok(plain.text.startsWith('This is a plain text'));
   await assert.rejects(fetchPublicPage('https://example.com', { resolve, get: transport('', 302, { location: 'http://169.254.169.254/latest' }) }), /非公网/);
   await assert.rejects(fetchPublicPage('https://example.com', { resolve, get: transport('a'.repeat(100)), maxBytes: 50 }), /大小/);
   await assert.rejects(fetchPublicPage('https://example.com', { resolve: () => new Promise(() => {}), timeoutMs: 10 }), /DNS/);
