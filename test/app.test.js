@@ -56,6 +56,51 @@ test('最近正常的上游在前两次瞬时探测失败时继续显示可用',
   assert.equal(result.stale, true);
 });
 
+test('用户服务状态在上游探针抛异常时仍返回结构化状态', async t => {
+  const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); });
+  f.server.close();
+  const upstreams = {
+    list: async () => [{ id: 1, status: 'active', isDefault: true }],
+    test: async () => { throw new Error('simulated upstream outage'); },
+  };
+  const server = http.createServer(createApp({
+    db: f.db, cdnfly: f.cdnfly, upstreams,
+    config: { appOrigin: 'http://127.0.0.1', sessionHours: 24, settingsEncryptionKey: 'status-test-key' },
+  }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const cookie = await login(base, 'alice', 'alice-password');
+  const response = await request(base, '/api/service-status', cookie);
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.status, 'unhealthy');
+  assert.equal(result.services.cdn.ok, false);
+});
+
+test('管理员健康检查隔离单个上游探针异常并返回账号状态', async t => {
+  const f = await fixture(); t.after(() => { f.server.close(); f.db.close(); });
+  f.server.close();
+  const upstreams = {
+    list: async () => [{ id: 1, name: 'primary', status: 'active', isDefault: true }],
+    test: async () => { throw new Error('simulated upstream outage'); },
+  };
+  const server = http.createServer(createApp({
+    db: f.db, cdnfly: f.cdnfly, upstreams,
+    config: { appOrigin: 'http://127.0.0.1', sessionHours: 24, settingsEncryptionKey: 'status-test-key' },
+  }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const cookie = await login(base, 'admin', 'admin-password');
+  const response = await request(base, '/api/admin/health', cookie);
+  assert.equal(response.status, 207);
+  const result = await response.json();
+  assert.equal(result.status, 'unhealthy');
+  assert.equal(result.services.cdnfly.ok, false);
+  assert.equal(result.services.cdnfly.total, 1);
+  assert.equal(result.services.cdnfly.accounts[0].name, 'primary');
+  assert.equal(result.services.cdnfly.accounts[0].ok, false);
+});
+
 async function request(base, path, cookie, options = {}) {
   return fetch(`${base}${path}`, { ...options, headers: { cookie, 'content-type': 'application/json', ...(options.headers || {}) } });
 }

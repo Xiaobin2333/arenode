@@ -1,0 +1,55 @@
+/* 账户中心层：新手引导、资料、安全、钱包、运行时设置 */
+/* 由 styles.css 按层切分（Phase 2a），层叠顺序与原文件一致，视觉不应变化。 */
+
+/* Account onboarding, wallet and runtime settings */
+.login-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.login-panel { overflow-y: auto; }
+.login-form { padding-block: 28px; }
+.login-form h2 { color: var(--ink); font-size: 31px; }
+.login-form > .muted { margin-bottom: 24px; }
+.login-form input[readonly] { color: var(--text-3); background: var(--bg-subtle); }
+.email-code-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 10px; align-items: stretch; }
+.email-code-row input { min-width: 0; }
+.email-code-row .secondary { width: 120px; min-height: 44px; padding-inline: 10px; white-space: nowrap; }
+.turnstile-slot { min-height: 65px; margin: 2px 0 14px; }
+.turnstile-slot:empty { min-height: 0; }
+.login-form .secondary.wide { justify-content: center; }
+
+.wallet-hero { min-height: 154px; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 24px 28px; color: var(--green-ink); border: 1px solid var(--line); border-radius: 8px; background: var(--green-bg); box-shadow: 0 12px 30px color-mix(in srgb, var(--green) 8%, transparent); }
+.wallet-hero > div small { color: var(--green-ink); font-size: 11px; font-weight: 800; }
+.wallet-hero > div strong { display: block; margin: 7px 0 4px; color: var(--green-ink); font-size: 32px; }
+.wallet-hero > div p { margin: 0; color: var(--text-3); font-size: 12px; }
+.wallet-recharge { width: min(520px, 52%); display: grid; grid-template-columns: minmax(200px, 1fr) auto; gap: 10px; align-items: end; }
+.wallet-recharge label { margin: 0; }.wallet-recharge input { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; }
+.wallet-recharge button { min-height: 44px; }
+
+.settings-stack { display: grid; gap: 16px; }
+.settings-section { overflow: visible; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 22px; padding: 22px; }
+.settings-grid .full { grid-column: 1 / -1; }
+.switch-setting { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-subtle); }
+.switch-setting span { display: grid; gap: 5px; }.switch-setting strong { color: var(--ink); font-size: 13px; }.switch-setting small { color: var(--text-3); font-size: 11px; }
+.switch-setting input[type="checkbox"] { position: relative; width: 42px; height: 24px; min-height: 24px; flex: 0 0 42px; padding: 0; appearance: none; border: 0; border-radius: 12px; background: #cdd6e2; box-shadow: inset 0 0 0 1px rgba(64, 79, 101, .08); transition: background .18s ease; }
+.switch-setting input[type="checkbox"]::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--panel); box-shadow: 0 1px 4px rgba(37, 51, 72, .28); transition: transform .18s ease; }
+.switch-setting input[type="checkbox"]:checked { background: var(--accent); }
+.switch-setting input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.switch-setting input[type="checkbox"]:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 20%, transparent); outline-offset: 2px; }
+
+@media (max-width: 768px) {
+  .wallet-hero { align-items: stretch; flex-direction: column; padding: 20px; }
+  .wallet-recharge { width: 100%; }
+  .settings-grid { grid-template-columns: 1fr; padding: 16px; }
+  .settings-grid .full { grid-column: auto; }
+}
+@media (max-width: 768px) {
+  .login-panel { align-items: start; padding: 20px; }
+  .mobile-brand { margin-bottom: 34px; }
+  .login-form { padding-block: 18px; }
+  .login-form h2 { font-size: 27px; }
+  .mobile-brand { color: var(--ink); }
+  .email-code-row { grid-template-columns: minmax(0, 1fr) 108px; gap: 8px; }
+  .email-code-row .secondary { width: 108px; padding-inline: 6px; font-size: 12px; }
+  .wallet-recharge { grid-template-columns: 1fr; }
+  .wallet-recharge button { width: 100%; }
+}
+

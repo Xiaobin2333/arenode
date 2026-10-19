@@ -1,0 +1,300 @@
+/* Notion 风格签名层（Phase 2d 全量换肤，最后加载）。令牌在 theme.css（浅）/dark.css（深），本层做组件签名与规范归一： */
+/* 无渐变、无重阴影、无 translate/scale 动画、圆角 ≤8px、过渡仅 150ms 颜色、hover 浅灰 --bg-hover、active 加深 --bg-active。 */
+
+/* ===== 按钮：扁平、只变色、无浮起 ===== */
+.primary { box-shadow: none; background: var(--accent); transition: background-color .15s ease-out; }
+.primary:hover { background: var(--accent-dark); }
+.primary:active { background: color-mix(in srgb, var(--accent-dark) 88%, black); }
+.secondary { box-shadow: none; transition: background-color .15s ease-out, color .15s ease-out, border-color .15s ease-out; }
+.secondary:hover { background: var(--bg-hover); }
+.secondary:active { background: var(--bg-active); }
+.danger-button { box-shadow: none; transition: background-color .15s ease-out; }
+.danger-button:hover { background: color-mix(in srgb, var(--danger) 88%, black); }
+.text-button, .icon-button { transition: background-color .15s ease-out, color .15s ease-out, border-color .15s ease-out; }
+.icon-button:hover { background: var(--bg-hover); }
+.manage-button { color: var(--accent-dark) !important; border-color: var(--accent-line) !important; background: var(--bg-accent-soft) !important; }
+
+/* ===== 侧栏导航：选中=灰底黑字（Notion 页面态），hover 浅灰 ===== */
+.sidebar nav button { transition: background-color .15s ease-out, color .15s ease-out; }
+.sidebar nav button.active, .sidebar nav .nav-direct.active { color: var(--ink); background: var(--nav-2); }
+.sidebar nav button.active .nav-icon, .nav-cluster.active-parent > .nav-parent .nav-icon { color: var(--ink); }
+.sidebar nav button.active::after { background: var(--text-3); }
+.sidebar nav .nav-children button.active { color: var(--ink); background: var(--nav-2); }
+.sidebar nav .nav-children button.active > span { background: var(--text-3); box-shadow: none; }
+
+/* ===== 表格：表头透明底 + 发线分隔；行 hover 浅灰（--bg-hover 令牌） ===== */
+th { background: transparent; }
+
+/* ===== 输入：Notion 式聚焦环 ===== */
+input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* ===== 交互过渡统一为 150ms 颜色过渡（禁位移动画） ===== */
+button, a, input, select, textarea { transition-duration: .15s; transition-timing-function: ease-out; }
+
+/* ===== 圆角归一（规范禁止 rounded-2xl 及更大） ===== */
+.hero-copy > small { border-radius: 6px; color: var(--accent-dark); }
+.hero-copy .banner-icon { border-radius: 8px; border-color: var(--accent-line); }
+.hero-copy p { color: var(--text-3); }
+.detail-workspace-head > div:last-child span { border-radius: 6px; }
+
+/* ===== 字重与字体：Notion 用半粗无衬线，弃用衬线数字 ===== */
+.metric strong { font-family: inherit; font-weight: 700; }
+.login-brand h1 { font-family: inherit; font-weight: 700; color: var(--ink); }
+
+/* ===== 四层转发详情头图：蓝色实心改为扁平面板 ===== */
+.stream-detail-hero { color: var(--ink); border: 1px solid var(--line); background: var(--panel); }
+.stream-detail-hero h3 { color: var(--ink); }
+.stream-detail-hero p span { color: var(--text-2); background: var(--gray-bg); }
+.stream-detail-hero .badge { color: var(--amber-ink); background: var(--amber-bg); }
+
+/* ===== 登录页与启动页：米白极简 ===== */
+.boot-splash { color: var(--text-3); background: var(--canvas); }
+.login-brand { color: var(--ink); background: var(--canvas); border-right: 1px solid var(--line); }
+.login-brand .eyebrow { color: var(--accent); }
+.login-copy { color: var(--text-2); }
+.trust-line { color: var(--text-3); }
+.trust-line span { background: var(--green); box-shadow: 0 0 0 5px color-mix(in srgb, var(--green) 12%, transparent); }
+.brand-mark { border-color: var(--line-strong); }
+.brand-mark span { border-color: var(--accent); }
+.login-panel { background: transparent; }
+.login-form h2 { color: var(--ink); }
+.mobile-brand { color: var(--ink); font-family: inherit; font-size: 19px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+.mobile-brand .brand-mark { border-color: var(--line-strong); }
+
+/* ===== 间距系统归一（Phase 2e）：标尺 4/8/12/16/20/24，面板内左缘对齐 16px，控件高度统一 40px ===== */
+
+/* --- 全局节奏 --- */
+label { margin-bottom: 16px; }
+.metrics { margin-bottom: 16px; }
+.ops-summary { gap: 12px; margin-bottom: 16px; }
+.ops-summary > div { padding: 12px 16px; }
+.section-head:not(.compact), .section-head.compact { margin-bottom: 16px; }
+.admin-welcome, .admin-hero { margin-bottom: 16px; }
+.view-error { margin-bottom: 16px; }
+#billing > .quota-warning { margin-top: 16px; }
+
+/* --- 面板内左缘对齐（条状区横向 padding 统一 16px） --- */
+.panel-head { padding: 12px 16px; }
+.pager { padding: 10px 16px; }
+.subsection-head { min-height: 48px; padding: 10px 16px; }
+.resource-kind-tabs { padding: 12px 16px 0; }
+.resource-kind-tabs button, .resource-subtabs button { padding: 0 12px; }
+.resource-tabs { gap: 8px; margin-bottom: 16px; }
+
+/* --- 控件高度统一 40px（消除同排高矮差） --- */
+.email-code-row { gap: 12px; }
+.email-code-row .secondary { min-height: 40px; }
+.wallet-recharge { gap: 8px; }
+.wallet-recharge button { min-height: 40px; }
+#upstreamPackageDialog select { min-height: 40px; }
+.password-row .icon-button { width: 40px; height: 40px; }
+.filter-toolbar > button { min-height: 40px; }
+.report-filters { align-items: center; }
+.monitor-main .query-grid input, .monitor-main .query-grid select { height: 40px; min-height: 40px; }
+
+/* --- workbench 节奏 --- */
+.workbench-layout { gap: 16px; }
+.monitor-workbench, .monitor-chart-grid, .monitor-main { gap: 16px; }
+.site-action-toolbar, .resource-action-toolbar, .stream-action-toolbar { min-height: 56px; }
+.workbench-rail button { min-height: 64px; }
+
+/* --- 规则构建器 --- */
+.rule-row, .acl-rule { padding: 12px; gap: 12px; }
+.rule-row.acl-condition { padding: 8px; }
+.rule-row .icon-button { margin-bottom: 0; }
+.rule-builder { gap: 12px; }
+
+/* --- 监控区 --- */
+.chart-wrap { padding: 16px 18px 18px; }
+.monitor-summary { padding: 12px 18px 18px; }
+.monitor-summary > div { min-height: 56px; }
+.preset-range-buttons { gap: 4px; }
+.health-summary { padding: 8px 18px; }
+.health-summary > div { padding: 16px; }
+.config-editor { padding: 20px; gap: 0 16px; }
+.config-editor > .switch-inline { margin-bottom: 16px; }
+
+/* --- 站点详情 --- */
+.site-config-tabs { top: 56px; }
+.view.loading::before { top: 56px; }
+.site-config-heading { min-height: 64px; padding: 16px 20px; }
+.detail-form-grid { padding: 20px; gap: 0 16px; }
+.site-config-form .detail-form-grid { row-gap: 16px; }
+.config-subsection > h4, .subsection-title { padding: 16px 20px 0; }
+.config-subsection > .detail-rule-builder { padding: 12px 20px 20px; }
+.site-config-form > .sticky-actions { margin: 16px; }
+.sticky-actions { padding: 12px 16px; }
+
+/* --- 客户计费页：修复面板贴死（0px）与首屏双缝（30px），统一 16px 单轨 --- */
+#billing > .section-head { margin-bottom: 0; }
+#billing > .tenant-billing-pane { margin-top: 16px; }
+.wallet-hero { min-height: 0; gap: 24px; padding: 20px 24px; }
+.subscription-cards { gap: 16px; }
+.subscription-card { display: flex; flex-direction: column; padding: 16px; }
+.subscription-card dl { gap: 8px 12px; }
+.subscription-card footer { margin-top: auto; padding-top: 12px; }
+.redeem-panel { padding: 20px 24px; }
+.wallet-summary > div { padding: 12px 16px; }
+.quota-item { padding: 24px; }
+.recovery-record-row code { padding: 8px; }
+
+/* --- 账户与设置 --- */
+.account-form label { margin-bottom: 16px; }
+.settings-grid { gap: 4px 20px; padding: 20px; }
+.profile-hero { min-height: 0; padding: 20px 24px; }
+.health-service > p { margin: 16px 0; }
+.switch-setting { padding: 12px 16px; }
+
+/* --- 对话框 --- */
+dialog form { padding: 24px; }
+dialog .dialog-actions { gap: 8px; margin-top: 8px; }
+.form-grid { gap: 0 16px; }
+dialog .switch-list { margin: 0 0 16px; border-radius: 6px; }
+dialog .check-list label, dialog .switch-list label { padding: 12px; }
+dialog .repeater-head { margin: 0 0 12px; }
+
+/* --- 卡片与小件 --- */
+.record-list { gap: 8px; }
+.record-item { padding: 12px 16px; }
+.report-grid > div { padding: 16px; }
+.plan-change-quote > div { padding: 12px; }
+.empty { padding: 52px 20px; }
+.ops-summary strong, .wallet-summary > div strong { font-size: 20px; }
+#auditAction { min-width: 220px; }
+.app-announcement, .public-announcement { padding: 12px 16px; }
+.nav-search { margin: 4px 12px 12px; }
+#auditTable td:last-child { white-space: normal; max-width: 420px; overflow-wrap: anywhere; }
+
+/* --- 灾后恢复/找回：表单贴边、按钮换行拉伸、面板贴死修复 --- */
+#recoveryClaimForm, #recoveryImportForm { padding: 16px; }
+#recoveryImportForm { width: 100%; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; align-items: end; gap: 12px; }
+#recoveryImportForm label { margin-bottom: 0; }
+#recoveryImportForm button { min-height: 40px; }
+#recoveryClaimResult { margin: 0 16px; }
+#recoveryVerifyButton { margin: 0 16px 16px; }
+#recoveryClaimHint { margin: 0 16px 16px; }
+#recovery-admin .panel + .panel { margin-top: 16px; }
+.status-text:empty { display: none; }
+
+/* --- 响应式补齐 --- */
+@media (max-width: 1024px) {
+  .wallet-summary { grid-template-columns: 1fr 1fr; }
+  .wallet-summary > p { grid-column: 1 / -1; }
+}
+@media (max-width: 768px) {
+  .site-config-tabs { top: 56px; }
+  .monitor-rail button { min-height: 64px; }
+  #recoveryImportForm { grid-template-columns: 1fr; }
+}
+
+/* ===== Factory 风格登录页（1:1 复刻）：橙色主调 + 六瓣花朵点阵 + 进场特效 ===== */
+.login-shell {
+  position: relative; isolation: isolate; overflow: hidden;
+  grid-template-columns: minmax(520px, 44%) 1fr;
+  --accent: #ff4d00; --accent-dark: #e04400; --accent-line: #ffd2bd; --bg-accent-soft: #fff1e9;
+  --login-glow: #ffeee3;
+  /* A single backdrop spans both columns, so transparent panels have no seam. */
+  background:
+    radial-gradient(46% 40% at 30% 28%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 72%),
+    radial-gradient(52% 46% at 74% 66%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 72%),
+    linear-gradient(125deg, var(--canvas) 0%, var(--login-glow) 45%, var(--canvas) 100%);
+  background-repeat: no-repeat;
+}
+[data-theme='dark'] .login-shell { --login-glow: #251c16; }
+.login-brand { position: absolute; inset: 0; z-index: 3; overflow: visible; padding: 0; border: 0; background: transparent; box-shadow: none; pointer-events: none; }
+.login-brand > * { pointer-events: auto; }
+.brand-mark { width: 32px; height: 32px; border: 0; transform: none; background: var(--accent); -webkit-mask: url('/assets/factory-logo.svg') center / contain no-repeat; mask: url('/assets/factory-logo.svg') center / contain no-repeat; }
+.brand-mark span { display: none; }
+.brand-mark { transition: rotate .5s cubic-bezier(.22, .8, .3, 1); }
+.login-brand:hover .brand-mark, .mobile-brand:hover .brand-mark { rotate: 120deg; }
+.login-brand .brand-mark { position: absolute; top: 28px; left: 34px; }
+.login-brand > div { position: absolute; top: 34px; left: 80px; }
+.login-brand .eyebrow, .login-brand .login-copy { display: none; }
+.login-brand h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
+.login-brand .trust-line { bottom: 26px; left: 36px; margin: 0; }
+.login-panel { display: flex; align-items: center; justify-content: center; padding: 96px 48px 72px; background: transparent; }
+.login-form { width: min(440px, 100%); padding-block: 0; }
+.login-form > .eyebrow { margin: 0 0 16px; color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .24em; text-transform: uppercase; }
+.login-form > h2 { margin: 0 0 14px; font-size: clamp(38px, 4.4vw, 56px); line-height: 1.06; letter-spacing: -.02em; }
+.login-form > .muted { margin: 0 0 36px; font-size: 15px; }
+/* 两栏透出共享渐变；只裁切粒子舞台，让底层鼠标柔光跨栏显示。 */
+.login-art {
+  position: relative; overflow: visible;
+  background: transparent;
+}
+/* Factory 官方星形徽标：mask 取令牌色随主题自适应，轻微呼吸缩放 + 入场浮现（不旋转，保持品牌标识稳定） */
+.login-art .art-logo {
+  position: absolute; inset: 0;
+  background: var(--text-2); opacity: .55;
+  -webkit-mask-image: url('/assets/factory-logo.svg'); mask-image: url('/assets/factory-logo.svg');
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: min(80%, 720px); mask-size: min(80%, 720px);
+  animation: art-breathe 9s ease-in-out infinite, art-enter .9s cubic-bezier(.22, .8, .3, 1) both;
+}
+/* Canvas replaces the fill after the original SVG has been sampled successfully. */
+.login-art .art-logo.particles-ready {
+  background: transparent; opacity: 1;
+  -webkit-mask-image: none; mask-image: none;
+  animation: art-enter .9s cubic-bezier(.22, .8, .3, 1) both;
+}
+.logo-particles { display: block; width: 100%; height: 100%; pointer-events: none; }
+@keyframes art-breathe { 0%, 100% { scale: 1; } 50% { scale: 1.045; } }
+@keyframes art-enter { from { opacity: 0; translate: 0 18px; } }
+/* ===== 右栏鼠标互动（A 视差倾斜 + 探照灯）：舞台 3D 倾斜跟随光标，按下时轻微按压回弹 ===== */
+.art-stage {
+  position: absolute; inset: 0; overflow: hidden;
+  transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform .28s cubic-bezier(.22, .8, .3, 1);
+  will-change: transform;
+}
+.login-art:active .art-stage {
+  transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) scale(.96);
+  transition-duration: .12s;
+}
+/* 整页鼠标柔光位于表单和粒子下方，按帧更新位置。 */
+.login-shell::after {
+  content: ''; position: absolute; z-index: -1; left: 0; top: 0; width: 380px; height: 380px; pointer-events: none;
+  background: radial-gradient(circle 190px at center, color-mix(in srgb, var(--accent) 18%, transparent), transparent 72%);
+  transform: translate3d(calc(var(--glow-x, 0px) - 50%), calc(var(--glow-y, 0px) - 50%), 0);
+  opacity: 0; transition: opacity .35s ease;
+}
+.login-shell.pointer-active::after { opacity: 1; }
+/* 登录页进场：整页淡入 + 表单元素依次升起（切换表单时自动重播） */
+.login-shell:not(.hidden) { animation: login-fade .45s ease-out; }
+@keyframes login-fade { from { opacity: 0; } }
+.login-form > * { animation: auth-rise .5s cubic-bezier(.22, .8, .3, 1) both; }
+.login-form > *:nth-child(2) { animation-delay: 60ms; }
+.login-form > *:nth-child(3) { animation-delay: 120ms; }
+.login-form > *:nth-child(4) { animation-delay: 180ms; }
+.login-form > *:nth-child(5) { animation-delay: 240ms; }
+.login-form > *:nth-child(6) { animation-delay: 300ms; }
+.login-form > *:nth-child(7) { animation-delay: 360ms; }
+.login-form > *:nth-child(n+8) { animation-delay: 420ms; }
+@keyframes auth-rise { from { opacity: 0; translate: 0 14px; } }
+@media (max-width: 1024px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .login-art { display: none; }
+}
+@media (max-width: 768px) {
+  .login-panel { align-items: flex-start; padding: 28px 20px; }
+  .login-form > h2 { font-size: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-shell::after { display: none; }
+  .login-shell:not(.hidden), .login-form > *, .login-art, .login-art .art-logo,
+  .app-entering, .app-entering .sidebar, .app-entering .topbar, .app-entering .view.active > * { animation: none !important; }
+}
+
+/* ===== 进入首页特效：外壳淡入，侧栏左滑入，顶栏下落，内容依次升起 ===== */
+.app-entering { animation: app-fade-in .45s ease-out; }
+.app-entering .sidebar { animation: app-slide-right .5s cubic-bezier(.22, .8, .3, 1) both; }
+.app-entering .topbar { animation: app-drop .5s cubic-bezier(.22, .8, .3, 1) both; }
+.app-entering .view.active > * { animation: auth-rise .55s cubic-bezier(.22, .8, .3, 1) both; }
+.app-entering .view.active > *:nth-child(2) { animation-delay: 70ms; }
+.app-entering .view.active > *:nth-child(3) { animation-delay: 140ms; }
+.app-entering .view.active > *:nth-child(4) { animation-delay: 210ms; }
+.app-entering .view.active > *:nth-child(n+5) { animation-delay: 280ms; }
+@keyframes app-fade-in { from { opacity: 0; } }
+@keyframes app-slide-right { from { opacity: 0; translate: -16px 0; } }
+@keyframes app-drop { from { opacity: 0; translate: 0 -12px; } }

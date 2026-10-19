@@ -170,6 +170,16 @@ function summarizeUpstreamHealth(active, checks) {
   return { ok, degraded, stale: transientHealthy > 0, checkedAt: checks.at(-1)?.checkedAt || new Date().toISOString() };
 }
 
+async function checkUpstream(upstreams, id, options = {}) {
+  try {
+    return await upstreams.test(id, options);
+  } catch (error) {
+    // A disabled or malformed account must be reported as an unhealthy check,
+    // not allowed to turn the whole customer status endpoint into a 500.
+    return { ok: false, error: error.message || '上游账号不可用', checkedAt: new Date().toISOString() };
+  }
+}
+
 export function createApp({ db, cdnfly, upstreams = null, config, billing = null, cache = null, mailer = null, operations = null, turnstileFetch = fetch, dnsResolveCname, dnsResolveTxt }) {
   const resolveClientIp = createClientIpResolver(config.trustedProxyCidrs);
   const loginAttempts = new Map();
@@ -183,13 +193,19 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
     const load = async () => {
       let cdn;
       if (upstreams) {
-        const subscriptions = await db.prepare(`SELECT DISTINCT upstream_id FROM subscriptions
-          WHERE user_id=? AND status IN ('active','suspended') AND upstream_id IS NOT NULL`).all(user.id);
-        const active = (await upstreams.list()).filter(item => item.status === 'active');
-        const ids = subscriptions.length ? subscriptions.map(item => Number(item.upstream_id)) : active.filter(item => item.isDefault).map(item => item.id);
-        const targets = ids.length ? [...new Set(ids)] : active.map(item => item.id);
-        const checks = await Promise.all(targets.map(id => upstreams.test(id)));
-        cdn = summarizeUpstreamHealth(active, checks);
+        try {
+          const subscriptions = await db.prepare(`SELECT DISTINCT upstream_id FROM subscriptions
+            WHERE user_id=? AND status IN ('active','suspended') AND upstream_id IS NOT NULL`).all(user.id);
+          const active = (await upstreams.list()).filter(item => item.status === 'active');
+          const ids = subscriptions.length ? subscriptions.map(item => Number(item.upstream_id)) : active.filter(item => item.isDefault).map(item => item.id);
+          const targets = ids.length ? [...new Set(ids)] : active.map(item => item.id);
+          const checks = await Promise.all(targets.map(id => checkUpstream(upstreams, id)));
+          const targetSet = new Set(targets.map(Number));
+          const targetAccounts = active.filter(item => targetSet.has(Number(item.id)));
+          cdn = summarizeUpstreamHealth(targetAccounts, checks);
+        } catch {
+          cdn = { ok: false, degraded: false, checkedAt: new Date().toISOString() };
+        }
       } else {
         try { await cdnfly.health(); cdn = { ok: true, checkedAt: new Date().toISOString() }; }
         catch { cdn = { ok: false, checkedAt: new Date().toISOString() }; }
@@ -220,7 +236,7 @@ export function createApp({ db, cdnfly, upstreams = null, config, billing = null
         catch (error) { upstreamListError = error.message || '无法读取上游配置'; }
       }
       const upstreamProbe = upstreams
-        ? (upstreamRows.length ? Promise.all(upstreamRows.map(async item => ({ id: item.id, name: item.name, ...(await upstreams.test(item.id, { fresh })) }))) : Promise.resolve([]))
+        ? (upstreamRows.length ? Promise.all(upstreamRows.map(async item => ({ id: item.id, name: item.name, ...(await checkUpstream(upstreams, item.id, { fresh })) }))) : Promise.resolve([]))
         : Promise.resolve([await probe(() => cdnfly.health({ fresh }))]);
       const [postgres, redis, upstreamChecks] = await Promise.all([
         probe(() => db.health()),

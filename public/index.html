@@ -3,9 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
+  <script src="/js/theme-init.js"></script>
   <title>Arenode 控制台</title>
-  <link rel="stylesheet" href="/styles.css?v=recovery1">
+  <link rel="stylesheet" href="/css/base.css?v=recovery1">
+  <link rel="stylesheet" href="/css/theme.css?v=recovery1">
+  <link rel="stylesheet" href="/css/workbench.css?v=recovery1">
+  <link rel="stylesheet" href="/css/account.css?v=recovery1">
+  <link rel="stylesheet" href="/css/commercial.css?v=recovery1">
+  <link rel="stylesheet" href="/css/workflows.css?v=recovery1">
+  <link rel="stylesheet" href="/css/console.css?v=recovery1">
+  <link rel="stylesheet" href="/css/dark.css?v=recovery1">
+  <link rel="stylesheet" href="/css/notion.css?v=login-pointer-20261020">
+  <link rel="stylesheet" href="/css/operations.css?v=main-ui-20261019">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -74,6 +84,7 @@
         <p class="login-help"><button id="forgotBackLogin" class="inline-action" type="button">返回登录</button></p>
       </form>
     </section>
+    <aside class="login-art" aria-hidden="true"><div class="art-stage"><div class="art-logo"></div></div></aside>
   </main>
 
   <div id="appView" class="app-shell hidden">
@@ -165,7 +176,7 @@
       <header class="topbar">
         <button id="menuButton" class="icon-button menu-button" aria-label="打开菜单">☰</button>
         <div class="topbar-title"><p id="breadcrumb" class="eyebrow">站点运营 / 控制台</p><h2 id="pageTitle">运行概览</h2></div>
-        <div class="topbar-meta"><div class="top-status"><small>服务状态</small><strong id="apiStatus" class="pending"><i></i>检测中</strong></div><div class="top-clock"><small>系统时间</small><strong id="systemClock">--:--:--</strong></div><div class="account"><span id="accountInitial">U</span><div><strong id="accountName">user</strong><small id="accountRole">用户</small></div></div></div>
+        <div class="topbar-meta"><button id="themeToggle" class="icon-button theme-toggle" type="button" aria-label="切换深浅色主题" title="切换深浅色主题">◐</button><div class="top-status"><small>服务状态</small><strong id="apiStatus" class="pending"><i></i>检测中</strong></div><div class="top-clock"><small>系统时间</small><strong id="systemClock">--:--:--</strong></div><div class="account"><span id="accountInitial">U</span><div><strong id="accountName">user</strong><small id="accountRole">用户</small></div></div></div>
       </header>
 
       <main class="content">
@@ -778,6 +789,6 @@
   <dialog id="recordDialog" class="wide-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">RECORDS</p><h3 id="recordDialogTitle">记录</h3></div><button type="button" class="icon-button" data-close="recordDialog" aria-label="关闭">×</button></div><div id="recordDialogBody" class="record-list"></div><div class="dialog-actions"><button type="button" class="primary" data-close="recordDialog">关闭</button></div></form></dialog>
   <dialog id="inviteDialog"><form id="inviteForm" method="dialog"><div class="dialog-head"><div><p class="eyebrow">REGISTRATION INVITE</p><h3>生成邀请码</h3></div><button type="button" class="icon-button" data-close="inviteDialog" aria-label="关闭">×</button></div><label>生成数量<input name="count" type="number" min="1" max="100" value="1" required></label><label>单码可用次数<input name="maxUses" type="number" min="1" max="100000" value="1" required></label><label>过期时间<input name="expiresAt" type="datetime-local"></label><label>标签<input name="label" maxlength="120"></label><div class="dialog-actions"><button type="button" class="secondary" data-close="inviteDialog">取消</button><button type="submit" class="primary">生成邀请码</button></div></form></dialog>
 
-      <script type="module" src="/app.js?v=recovery1-sessionip1"></script>
+      <script type="module" src="/app.js?v=main-ui-20261019"></script>
 </body>
 </html>

@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+// styles.css 已按层拆分为 public/css/*.css（Phase 2a），测试按 link 顺序拼接后断言
+const cssLayers = ['base', 'theme', 'workbench', 'account', 'commercial', 'workflows', 'console', 'dark', 'notion', 'operations'];
+const css = cssLayers.map(name => fs.readFileSync(new URL(`../public/css/${name}.css`, import.meta.url), 'utf8')).join('\n');
 const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+// app.js 已拆分为入口 + public/js/** 模块；测试按模块拼接后断言，保持与旧单文件一致
+const walkJs = dir => fs.readdirSync(dir, { withFileTypes: true })
+  .flatMap(ent => ent.isDirectory() ? walkJs(path.join(dir, ent.name)) : ent.name.endsWith('.js') ? [path.join(dir, ent.name)] : []);
+const appSources = [fileURLToPath(new URL('../public/app.js', import.meta.url)), ...walkJs(fileURLToPath(new URL('../public/js', import.meta.url))).sort()];
+const app = appSources.map(file => fs.readFileSync(file, 'utf8')).join('\n');
 const monitorUtils = fs.readFileSync(new URL('../public/monitor-utils.js', import.meta.url), 'utf8');
 
 test('新版工作台导航和主面板保持稳定布局', () => {
@@ -16,13 +24,36 @@ test('新版工作台导航和主面板保持稳定布局', () => {
   assert.doesNotMatch(html, /id="resourceTabs"/);
   assert.match(css, /\.data-workbench\s*\{\s*display:\s*block/);
   assert.doesNotMatch(css, /#adminBillingTabs[^{}]*\{[^{}]*display:\s*none/);
-  assert.match(html, /styles\.css\?v=recovery1/);
-  assert.match(html, /app\.js\?v=recovery1-sessionip1/);
+  assert.match(html, /css\/base\.css\?v=recovery1/);
+  assert.match(html, /app\.js\?v=main-ui-20261019/);
   assert.match(app, /if \(autoRenew\) autoRenew\.checked/);
   assert.match(app, /if \(last\) paintServiceStatus\(last\)/);
-  assert.match(app, /sessionStorage\.setItem\('arenode-service-status'/);
+  assert.match(app, /statusStorageKey|sessionStorage\.setItem\([^)]*arenode-service-status/);
   assert.match(html, /id="bootSplash"/);
   assert.match(html, /id="loginView" class="login-shell hidden"/);
+  // Factory 风格登录页契约：右侧官方徽标艺术层 + 巨型表单标题
+  assert.match(html, /<aside class="login-art" aria-hidden="true"><div class="art-stage"><div class="art-logo"><\/div><\/div><\/aside>/);
+  assert.match(css, /\.login-art \.art-logo\s*\{[^}]*mask-image: url\('\/assets\/factory-logo\.svg'\)/);
+  assert.match(css, /\.login-form > h2\s*\{[^}]*clamp\(38px, 4\.4vw, 56px\)/);
+  // Factory 1:1 复刻契约：登录页橙色主调作用域 + 官方星形徽标（mask 取令牌色）+ 呼吸与表单入场动画
+  assert.match(css, /\.login-shell\s*\{[^}]*--accent:\s*#ff4d00/);
+  assert.match(css, /\.brand-mark\s*\{[^}]*mask: url\('\/assets\/factory-logo\.svg'\)/);
+  assert.match(css, /@keyframes art-enter \{\s*from \{ opacity: 0/);
+  assert.match(css, /@keyframes art-breathe/);
+  assert.doesNotMatch(css, /animation:\s*art-gradient/);
+  assert.match(css, /\.login-shell\s*\{[^}]*radial-gradient\(46% 40% at 30% 28%, color-mix\(in srgb, var\(--accent\) 13%/);
+  // 右栏鼠标互动契约：3D 倾斜舞台 + 按压回弹 + 光标探照灯 + CSS 变量驱动倾斜
+  assert.match(css, /\.art-stage\s*\{[^}]*perspective\(1100px\) rotateX\(var\(--tilt-x/);
+  assert.match(css, /\.login-art:active \.art-stage\s*\{[^}]*scale\(\.96\)/);
+  assert.match(css, /\.login-shell::after\s*\{[^}]*radial-gradient\(circle 190px at center/);
+  assert.match(css, /\.login-shell::after\s*\{[^}]*translate3d\(calc\(var\(--glow-x/);
+  assert.match(app, /initLoginArtFx\(\)/);
+  assert.match(app, /stage\.style\.setProperty\('--tilt-x'/);
+  assert.doesNotMatch(css, /\.login-shell:not\(\.hidden\)\s*\{[^}]*login-bg-pan/);
+  assert.match(css, /\[data-theme='dark'\] \.login-shell\s*\{\s*--login-glow:/);
+  assert.match(css, /@keyframes auth-rise/);
+  assert.match(app, /appView\.classList\.add\('app-entering'\)/);
+  assert.match(css, /\.app-entering \.view\.active > \*\s*\{[^}]*auth-rise/);
   assert.match(html, /id="recoveryRecordName"/);
   assert.match(html, /id="recoveryRecordValue"/);
   assert.match(html, /id="copyRecoveryRecordValue"[^>]*>复制 TXT 内容<\/button>/);
@@ -34,8 +65,51 @@ test('新版工作台导航和主面板保持稳定布局', () => {
   assert.match(html, /<title>Arenode 控制台<\/title>/);
   assert.match(html, /class="arenode-logo"[^>]*>A<\/div>/);
   assert.match(app, /function syncWorkbenchLayout\(\)/);
-  assert.match(app, /contextRailVisible \? 'grid' : 'none'/);
+  // 二级 rail 显隐已改为 .rail-hidden 类驱动（不再使用 JS 内联 !important）
+  assert.match(app, /classList\.toggle\('rail-hidden', !contextRailVisible\)/);
   assert.match(app, /layout\.classList\.contains\('data-workbench'\)/);
+  assert.doesNotMatch(app, /style\.setProperty\('display'/);
+  assert.match(css, /\.workbench-layout\.rail-hidden\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(css, /\.workbench-layout\.rail-hidden\s*>\s*\.workbench-rail\s*\{\s*display:\s*none/);
+  // 可折叠侧栏契约：桌面折叠为 64px 图标栏，偏好持久化
+  assert.match(css, /\.app-shell\.nav-collapsed\s*\{\s*--sidebar-w:\s*64px/);
+  assert.match(css, /\.app-shell\.nav-collapsed\s+\.nav-cluster:hover\s+\.nav-children/);
+  assert.match(app, /localStorage\.setItem\('arenode-nav-collapsed'/);
+  // 深浅色双主题契约：dark 层覆写令牌，顶栏切换按钮，偏好持久化，首屏内联脚本防闪烁
+  assert.match(css, /\[data-theme='dark'\]\s*\{[^}]*--canvas:\s*#191919/);
+  assert.match(css, /\[data-theme='dark'\]\s*\{[^}]*--panel:\s*#202020/);
+  assert.match(html, /id="themeToggle"/);
+  assert.match(html, /<meta name="color-scheme" content="light dark">/);
+  assert.match(html, /<script src="\/js\/theme-init\.js"><\/script>/);
+  assert.match(app, /localStorage\.getItem\('arenode-theme'\)/);
+  assert.doesNotMatch(html, /<script>try \{ document\.documentElement\.dataset\.theme/);
+  assert.match(app, /localStorage\.setItem\('arenode-theme'/);
+  assert.match(app, /arenode:themechange/);
+  // 主题切换特效契约：View Transition 圆形扩散 + 降级全局渐变 + 尊重减弱动画偏好
+  assert.match(app, /document\.startViewTransition/);
+  assert.match(app, /--theme-x/);
+  assert.match(app, /theme-fading/);
+  assert.match(app, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /@keyframes theme-circle-in/);
+  assert.match(css, /::view-transition-new\(root\)\s*\{[^}]*theme-circle-in/);
+  assert.match(css, /\.theme-fading, \.theme-fading \*[^}]*transition: background-color/);
+  // Notion 风格契约（Phase 2d）：米色画布、青蓝强调、扁平按钮、灰底选中导航、150ms 颜色过渡
+  assert.match(css, /--canvas:\s*#f7f6f3/);
+  assert.match(css, /--accent:\s*#2eaadc/);
+  assert.match(css, /\.primary\s*\{\s*box-shadow:\s*none/);
+  assert.match(css, /\.secondary:hover\s*\{\s*background:\s*var\(--bg-hover\)/);
+  assert.match(css, /\.sidebar nav button\.active, \.sidebar nav \.nav-direct\.active\s*\{\s*color:\s*var\(--ink\);\s*background:\s*var\(--nav-2\)/);
+  assert.match(css, /transition-duration:\s*\.15s/);
+  // 间距系统契约（Phase 2e）：4px 标尺、面板内左缘 16px 对齐、控件高度统一 40px、billing 页 16px 单轨节奏、sticky 跟随 56px 顶栏
+  assert.match(css, /label\s*\{\s*margin-bottom:\s*16px/);
+  assert.match(css, /\.panel-head\s*\{\s*padding:\s*12px 16px/);
+  assert.match(css, /\.subsection-head\s*\{\s*min-height:\s*48px/);
+  assert.match(css, /\.filter-toolbar > button\s*\{\s*min-height:\s*40px/);
+  assert.match(css, /\.site-config-tabs\s*\{\s*top:\s*56px/);
+  assert.match(css, /#billing > \.section-head\s*\{\s*margin-bottom:\s*0/);
+  assert.match(css, /#billing > \.tenant-billing-pane\s*\{\s*margin-top:\s*16px/);
+  assert.match(css, /\.workbench-layout\s*\{\s*gap:\s*16px/);
+  assert.match(css, /dialog \.dialog-actions\s*\{\s*gap:\s*8px;\s*margin-top:\s*8px/);
   assert.match(app, /function actionMenu\(content\)/);
   assert.match(app, /popover="auto"/);
   assert.doesNotMatch(app, /<details class="action-menu">/);
@@ -161,9 +235,9 @@ test('浏览器原生提示框已替换为站内 API Key 弹窗', () => {
 });
 
 test('网站详情双栏控件保持固定高度并按顶部对齐', () => {
-  assert.match(css, /\.site-config-form \.detail-form-grid \{[^}]*row-gap: 18px/);
+  assert.match(css, /\.site-config-form \.detail-form-grid \{[^}]*row-gap: 16px/);
   assert.match(css, /\.site-config-form \.detail-form-grid > label \{[^}]*align-self: start;[^}]*align-content: start;[^}]*margin-bottom: 0/);
-  assert.match(css, /\.site-config-form \.detail-form-grid > label > input:not\(\[type="checkbox"\]\),\.site-config-form \.detail-form-grid > label > select \{[^}]*height: 44px;[^}]*min-height: 44px/);
+  assert.match(css, /\.site-config-form \.detail-form-grid > label > input:not\(\[type="checkbox"\]\),\.site-config-form \.detail-form-grid > label > select \{[^}]*height: 40px;[^}]*min-height: 40px/);
   assert.match(html, /匹配内容<textarea name="hotlinkScopeContent" rows="4"/);
 });
 
@@ -188,9 +262,9 @@ test('回源 SSL 协议允许客户选择四个上游协议且关闭 HTTPS 不�
 
 test('监控快捷范围使用带标题且等高的分段按钮组', () => {
   assert.match(html, /<fieldset class="preset-range"><legend>快捷范围<\/legend><div class="preset-range-buttons">/);
-  assert.match(css, /\.preset-range button \{[^}]*min-height: 44px/);
+  assert.match(css, /\.preset-range button \{[^}]*min-height: 40px/);
   assert.match(css, /\.preset-range-buttons \{[^}]*display: flex;[^}]*align-items: stretch/);
-  assert.match(css, /\.monitor-main \.query-grid input, \.monitor-main \.query-grid select \{[^}]*height: 44px;[^}]*min-height: 44px/);
+  assert.match(css, /\.monitor-main \.query-grid input, \.monitor-main \.query-grid select \{[^}]*height: 40px;[^}]*min-height: 40px/);
   assert.match(css, /\.monitor-main #monitorForm > \.preset-range \{[^}]*grid-column: 1 \/ span 4/);
   assert.match(css, /\.monitor-main #monitorForm > button\[type="submit"\] \{[^}]*grid-column: 5/);
   assert.match(html, /data-monitor-minutes="10"/);

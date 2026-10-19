@@ -1,0 +1,73 @@
+/* 深色主题令牌与组件补丁（Phase 2c/2d：Notion 深色）。由顶栏 ◐ 按钮切换 html[data-theme='dark']，偏好存 localStorage 'arenode-theme'。 */
+/* 原则：只覆写令牌与少数硬编码遗留；Notion 深色以 #191919 底 + #202020 面板 + 微亮灰 hover 构成层级。 */
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --ink: #d4d4d2;
+  --muted: #6f6f6c;
+  --line: #2e2e2e;
+  --canvas: #191919;
+  --panel: #202020;
+  --nav: #191919;
+  --nav-2: #2c2c2c;
+  --accent: #2eaadc;
+  --accent-dark: #4db9e2;
+  --blue: #5cc0e4;
+  --green: #2da08e;
+  --amber: #e4bc42;
+  --rose: #f27777;
+  --danger: #f27777;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 4px 14px rgba(0, 0, 0, .5);
+  --heading: #e8e8e6;
+  --text-2: #a6a6a3;
+  --text-3: #6f6f6c;
+  --line-strong: #43433f;
+  --bg-subtle: #202020;
+  --bg-hover: #2c2c2c;
+  --bg-active: #373737;
+  --bg-accent-soft: rgba(46, 170, 220, .16);
+  --pill-bg: rgba(32, 32, 32, .85);
+  --topbar-bg: rgba(25, 25, 25, .88);
+  --green-ink: #3bb4a0;
+  --green-bg: rgba(15, 123, 108, .28);
+  --amber-ink: #e4bc42;
+  --amber-bg: rgba(223, 171, 1, .2);
+  --rose-ink: #f27777;
+  --rose-bg: rgba(235, 87, 87, .2);
+  --gray-bg: rgba(255, 255, 255, .06);
+  --accent-line: #1f5a6e;
+  --chart-grid: #2e2e2e;
+  --chart-label: #6f6f6c;
+  --chart-fill-from: rgba(46, 170, 220, .25);
+  --chart-fill-to: rgba(46, 170, 220, 0);
+  --hero-grad-from: #202020;
+  --hero-grad-to: #202020;
+  --banner-grad-from: #202020;
+  --banner-grad-to: #202020;
+}
+
+/* 组件补丁：覆盖无法令牌化的硬编码遗留 */
+[data-theme='dark'] .topbar { border-bottom-color: var(--line); }
+[data-theme='dark'] .sidebar nav::-webkit-scrollbar-thumb { background: var(--line-strong); }
+[data-theme='dark'] .sidebar { border-right-color: var(--line); }
+[data-theme='dark'] dialog { color: var(--ink); background: var(--panel); }
+
+/* 主题切换按钮（两种主题通用的呈现） */
+.theme-toggle { width: 32px; height: 32px; font-size: 15px; }
+
+/* 主题切换特效：View Transition 圆形扩散（圆心=点击坐标，由 JS 写入 --theme-x/y） */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2147483646; animation: theme-circle-in .45s cubic-bezier(.4, 0, .2, 1); }
+@keyframes theme-circle-in {
+  from { clip-path: circle(0 at var(--theme-x, calc(100% - 120px)) var(--theme-y, 28px)); }
+  to { clip-path: circle(142vmax at var(--theme-x, calc(100% - 120px)) var(--theme-y, 28px)); }
+}
+/* 降级方案：不支持 View Transitions 时短暂开启全局颜色过渡 */
+.theme-fading, .theme-fading *, .theme-fading *::before, .theme-fading *::after {
+  transition: background-color .32s ease, color .32s ease, border-color .32s ease, box-shadow .32s ease, fill .32s ease, stroke .32s ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+}
